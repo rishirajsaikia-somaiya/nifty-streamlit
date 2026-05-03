@@ -659,7 +659,40 @@ def fetch_all_data_for_streamlit():
     return st.session_state['nifty_data']
 
 
-if __name__ == "__main__":
-    # This block is removed from Streamlit logic flow but kept for local testing
-    # In Streamlit Cloud, main() is called via the button logic below.
-    pass
+# ===============================
+# STREAMLIT USER INTERFACE
+# ===============================
+st.set_page_config(page_title="Nifty Stock Analyzer", layout="wide")
+
+st.title("📈 Nifty 100 & 250 Technical Analyzer")
+st.write("Click the button below to fetch historical stock data and calculate technical indicators (RSI, MACD, etc.).")
+
+# Create a button to start the process
+if st.button("Fetch & Calculate Data"):
+    
+    # Show a spinning loading indicator while your functions run
+    with st.spinner("Fetching data from Yahoo Finance... This will take a few minutes..."):
+        
+        # Trigger your data fetching function
+        df = fetch_all_data_for_streamlit()
+        
+        if df is not None and not df.empty:
+            st.success("✅ Data calculated successfully!")
+            
+            # Show a preview table directly on the website
+            st.write("### Data Preview")
+            st.dataframe(df.head(100))
+            
+            # Prepare the Excel file for download
+            excel_file = save_and_download_excel(df, "nifty_data.xlsx")
+            
+            # Create a download button for the user
+            if excel_file:
+                st.download_button(
+                    label="📥 Download Full Excel Report",
+                    data=excel_file.getvalue(),
+                    file_name="Nifty_Technical_Data.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        else:
+            st.error("❌ Failed to fetch data. Please check the Streamlit logs.")
