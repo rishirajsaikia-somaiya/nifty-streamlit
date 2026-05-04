@@ -701,6 +701,3 @@ else:
                     mime="application/vnd.ms-excel"
                 )
 
-else:
-    # Placeholder
-    st.info("Click 'Fetch Data' to load the dashboard and view charts.")
