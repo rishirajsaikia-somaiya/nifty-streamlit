@@ -10,7 +10,8 @@ import streamlit as st
 from io import BytesIO
 from plotly import graph_objects as go
 
-# Manual RSI function
+# === Manual Indicator Functions ===
+
 def manual_rsi(close_prices, length=14):
     if len(close_prices) < length:
         return pd.Series(dtype=float)
@@ -26,7 +27,6 @@ def manual_rsi(close_prices, length=14):
         rsi = 100.0 - (100.0 / (1.0 + rs))
     return rsi
 
-# Manual MFI function
 def manual_mfi(high, low, close, volume, length=14):
     if len(close) < length or volume is None or volume.empty:
         return pd.Series(dtype=float)
@@ -46,7 +46,8 @@ def manual_mfi(high, low, close, volume, length=14):
         mfi = 100.0 - (100.0 / (1.0 + mfr))
     return mfi
 
-# Nifty 100 List
+# === Data Fetch Functions ===
+
 def get_nifty_100_list():
     nifty_100_list = [
         'ADANIENT.NS', 'ADANIPORTS.NS', 'AIA.NS', 'ALKEM.NS', 'AMBUJACEM.NS',
@@ -67,7 +68,6 @@ def get_nifty_100_list():
     ]
     return nifty_100_list
 
-# Nifty 250 List
 def get_nifty_large_midcap_250_list():
     base = get_nifty_100_list()
     midcaps = [
@@ -117,7 +117,6 @@ def get_nifty_large_midcap_250_list():
     else:
         return unique_list
 
-# Fetch Data for Single Stock
 def fetch_stock_data(ticker: str, start_date: str = '2021-01-01', end_date: str = None):
     try:
         ticker_obj = yf.Ticker(ticker)
@@ -135,7 +134,8 @@ def fetch_stock_data(ticker: str, start_date: str = '2021-01-01', end_date: str 
     except Exception as e:
         return None
 
-# Normalize Columns
+# === Helper Functions ===
+
 def normalize_columns(df):
     if df.empty:
         return df
@@ -155,7 +155,6 @@ def normalize_columns(df):
             df[col] = np.nan
     return df
 
-# Remove Timezones
 def remove_timezones(df):
     if df.empty:
         return df
@@ -166,7 +165,6 @@ def remove_timezones(df):
             df[col] = df[col].dt.tz_localize(None)
     return df
 
-# Calculate Technical Indicators
 def calculate_technical_indicators(df: pd.DataFrame):
     if df.empty or 'ticker' not in df.columns or 'date' not in df.columns:
         return df
@@ -330,14 +328,12 @@ def calculate_technical_indicators(df: pd.DataFrame):
     else:
         return pd.DataFrame()
 
-# Sort DataFrame
 def sort_dataframe(df):
     if df.empty:
         return df
     df = df.sort_values(by=['date', 'ticker'], ascending=[False, True])
     return df
 
-# Save Excel
 def save_and_download_excel(df, filename):
     try:
         if 'date' in df.columns:
@@ -351,91 +347,90 @@ def save_and_download_excel(df, filename):
         output.seek(0)
         return output
     except Exception as e:
-        print(f"❌ Error saving Excel file: {str(e)}")
+        print(f"Error saving Excel file: {str(e)}")
         return None
 
-# ============================================
-# [STREAMLIT UI WRAPPER]
-# ============================================
+# === === STREAMLIT UI WRAPPER === ===
+# Streamlit runs the entire file on every render
 
+# Setup
 st.set_page_config(page_title="Nifty Analytics", layout="wide")
 
+# Initialize session state
 if 'nifty_data' not in st.session_state:
     st.session_state['nifty_data'] = None
 if 'selected_stocks' not in st.session_state:
     st.session_state['selected_stocks'] = []
 if 'nifty_filter' not in st.session_state:
     st.session_state['nifty_filter'] = 'Nifty 250'
+if 'available_tickers' not in st.session_state:
+    st.session_state['available_tickers'] = []
+if 'show_charts' not in st.session_state:
+    st.session_state['show_charts'] = False
 
+# Title
 st.title("📊 Nifty 100 & Large Midcap Analytics Dashboard")
 st.markdown("Select filter options to fetch and visualize technical indicators for Nifty 100/250")
 
-# Sidebar Filters
-with st.sidebar:
-    st.header("🎛️ Filter Settings")
-    st.header("📈 Stock Selection")
+# Main fetch button
+if st.button("🚀 Fetch Data", use_container_width=True, type="primary"):
+    with st.spinner('📡 Fetching data and calculating indicators... This may take 2-5 minutes'):
+        tickers_nifty_100 = get_nifty_100_list()
+        tickers_nifty_250 = get_nifty_large_midcap_250_list()
+        unique_tickers = list(dict.fromkeys(tickers_nifty_100 + tickers_nifty_250))
+        
+        all_tickers = list(dict.fromkeys(unique_tickers))
+        nifty_100_set = set(tickers_nifty_100)
+        nifty_250_set = set(tickers_nifty_250)
+        
+        # Fetch data for all stocks
+        data_frames_list = []
+        for ticker in all_tickers:
+            df = fetch_stock_data(ticker, start_date='2021-01-01')
+            if df is not None:
+                df = normalize_columns(df)
+                is_nifty_100 = ticker in tickers_nifty_100
+                source = 'NIFTY_100' if is_nifty_100 else 'NIFTY_250'
+                df['source'] = source
+                data_frames_list.append(df)
+        
+        if data_frames_list:
+            full_df = pd.concat(data_frames_list, ignore_index=True)
+            full_df = normalize_columns(full_df)
+            full_df = remove_timezones(full_df)
+            full_df = calculate_technical_indicators(full_df)
+            full_df = remove_timezones(full_df)
+            full_df = sort_dataframe(full_df)
+            
+            st.session_state['nifty_data'] = full_df
+            st.session_state['available_tickers'] = list(full_df['ticker'].unique())
+            
+            # Download button
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                full_df.to_excel(writer, index=False)
+            output.seek(0)
+            st.download_button(
+                label="📥 Download All Data (Excel)",
+                data=output.getvalue(),
+                file_name="nifty_data.xlsx",
+                mime="application/vnd.ms-excel",
+                use_container_width=True
+            )
+            
+            st.success("✅ Data fetched successfully!")
+            st.info(f"Total Tickers: {len(full_df['ticker'].unique())}")
+        else:
+            st.error("❌ No data fetched. Check console for errors.")
+else:
+    st.write("")  # Add blank line for layout
+
+# Show controls only if data is available
+if st.session_state['nifty_data'] is not None:
     
-    # Get available tickers from cached data if available
-    if 'available_tickers' not in st.session_state:
-        st.session_state['available_tickers'] = []
-    
-    # Fetch button
-    if st.button("🚀 Fetch Data", use_container_width=True):
-        with st.spinner('📡 Fetching data and calculating indicators...'):
-            tickers_nifty_100 = get_nifty_100_list()
-            tickers_nifty_250 = get_nifty_large_midcap_250_list()
-            unique_tickers = list(dict.fromkeys(tickers_nifty_100 + tickers_nifty_250))
-            
-            all_tickers = list(dict.fromkeys(unique_tickers))
-            # Remove duplicates
-            nifty_100_set = set(tickers_nifty_100)
-            nifty_250_set = set(tickers_nifty_250)
-            
-            # Fetch data for all stocks
-            data_frames_list = []
-            for ticker in all_tickers:
-                df = fetch_stock_data(ticker, start_date='2021-01-01')
-                if df is not None:
-                    df = normalize_columns(df)
-                    is_nifty_100 = ticker in tickers_nifty_100
-                    source = 'NIFTY_100' if is_nifty_100 else 'NIFTY_250'
-                    df['source'] = source
-                    data_frames_list.append(df)
-            
-            if data_frames_list:
-                full_df = pd.concat(data_frames_list, ignore_index=True)
-                full_df = normalize_columns(full_df)
-                full_df = remove_timezones(full_df)
-                full_df = calculate_technical_indicators(full_df)
-                full_df = remove_timezones(full_df)
-                full_df = sort_dataframe(full_df)
-                
-                st.session_state['nifty_data'] = full_df
-                st.session_state['available_tickers'] = list(full_df['ticker'].unique())
-                
-                # Download button
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    full_df.to_excel(writer, index=False)
-                output.seek(0)
-                st.download_button(
-                    label="📥 Download All Data (Excel)",
-                    data=output.getvalue(),
-                    file_name="nifty_data.xlsx",
-                    mime="application/vnd.ms-excel",
-                    use_container_width=True
-                )
-                
-                st.success("✅ Data fetched successfully!")
-                st.info(f"Total Tickers: {len(full_df['ticker'].unique())}")
-            else:
-                st.error("❌ No data fetched. Check console for errors.")
-            continue
-            
-    # Filter selection (only shown after fetch)
-    if st.session_state['nifty_data'] is not None:
-        ticker_dict = dict(enumerate(st.session_state['available_tickers']))
-        ticker_list = list(st.session_state['available_tickers'])
+    # Sidebar filters
+    with st.sidebar:
+        st.header("🎛️ Filter Settings")
         
         # Nifty filter
         nifty_filter = st.selectbox(
@@ -445,55 +440,54 @@ with st.sidebar:
         )
         st.session_state['nifty_filter'] = nifty_filter
         
-        # Stock selection
-        selected_stocks = st.multiselect(
-            "Select Stock(s) to Show:",
-            ticker_list,
-            default=['RELIANCE.NS'] if len(ticker_list) > 0 else []
-        )
-        st.session_state['selected_stocks'] = selected_stocks
-        
-        # Apply filter to ticker list
+        # Get available tickers for this filter
         df_session = st.session_state['nifty_data']
         filter_tickers = df_session[df_session['source'] == nifty_filter]['ticker'].unique()
-        filtered_tickers = list(filter_tickers)
+        ticker_list = list(filter_tickers)
         
-        if len(selected_stocks) > 0:
-            valid_stocks = [stock for stock in selected_stocks if stock in filtered_tickers]
-            st.session_state['selected_stocks'] = valid_stocks if len(valid_stocks) > 0 else selected_stocks
+        if len(ticker_list) > 0:
+            # Stock selection
+            selected_stocks = st.multiselect(
+                "Select Stock(s) to Show:",
+                ticker_list,
+                default=['RELIANCE.NS'] if len(ticker_list) > 0 else []
+            )
+            st.session_state['selected_stocks'] = selected_stocks
+        else:
+            selected_stocks = []
+        
+        # Show charts button
+        show_charts = st.button("📊 Show Charts", use_container_width=True)
+        st.session_state['show_charts'] = show_charts
+    
+    # Display charts if button is clicked and data is available
+    if st.session_state['show_charts'] and len(st.session_state['selected_stocks']) > 0:
+        df_filtered = st.session_state['nifty_data']
+        df_filtered = df_filtered[df_filtered['source'] == nifty_filter]
+        df_selected = df_filtered[df_filtered['ticker'].isin(st.session_state['selected_stocks'])]
+        
+        if df_selected.empty:
+            st.warning("⚠️ No data for selected stocks in current filter.")
+        else:
+            st.subheader(f"📊 Data for {nifty_filter}: {len(df_selected['ticker'].unique())} Stocks")
             
-        # Show charts for selected stocks
-        if len(st.session_state['selected_stocks']) > 0:
-            df_filtered = st.session_state['nifty_data']
-            df_filtered = df_filtered[df_filtered['source'] == nifty_filter]
-            df_selected = df_filtered[df_filtered['ticker'].isin(st.session_state['selected_stocks'])]
+            # Create columns for charts
+            num_charts = min(len(st.session_state['selected_stocks']), 4)
+            num_rows = 2
             
-            if df_selected.empty:
-                st.warning("⚠️ No data for selected stocks in current filter.")
-            else:
-                st.subheader(f"📊 Data for {nifty_filter}: {len(df_selected['ticker'].unique())} Stocks")
-                
-                # Display charts
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.plotly_chart(
-                        go.Figure().add_trace(go.Candlestick(
-                            x=df_selected.tail(50).set_index('date').index,
-                            open=df_selected.tail(50).set_index('date')['open'],
-                            high=df_selected.tail(50).set_index('date')['high'],
-                            low=df_selected.tail(50).set_index('date')['low'],
-                            close=df_selected.tail(50).set_index('date')['close']
-                        ))
-                    )
-                
-                with col2:
-                    st.plotly_chart(
-                        go.Figure().add_trace(go.Scatter(
-                            x=df_selected.tail(50).set_index('date').index,
-                            y=df_selected.tail(50).set_index('date')['close']
-                        ))
-                    )
-
-else:
-    st.warning("⚠️ Click 'Fetch Data' to load the dashboard first.")
+            # Create grid of charts
+            cols = st.columns(min(num_charts, 4))
+            
+            for idx, stock in enumerate(st.session_state['selected_stocks']):
+                if idx < len(cols):
+                    with cols[idx]:
+                        st.plotly_chart(
+                            go.Figure().add_trace(go.Candlestick(
+                                x=df_selected[df_selected['ticker'] == stock].tail(50).set_index('date').index,
+                                open=df_selected[df_selected['ticker'] == stock].tail(50).set_index('date')['open'],
+                                high=df_selected[df_selected['ticker'] == stock].tail(50).set_index('date')['high'],
+                                low=df_selected[df_selected['ticker'] == stock].tail(50).set_index('date')['low'],
+                                close=df_selected[df_selected['ticker'] == stock].tail(50).set_index('date')['close']
+                            )),
+                            use_container_width=True
+                        )
