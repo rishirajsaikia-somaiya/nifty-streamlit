@@ -8,7 +8,7 @@ import platform
 import pandas_ta as ta
 import streamlit as st
 from io import BytesIO
-
+from plotly import graph_objects as go
 
 # ===============================
 # MANUAL INDICATOR HELPER FUNCTIONS
@@ -38,7 +38,6 @@ def manual_rsi(close_prices, length=14):
         rsi = 100.0 - (100.0 / (1.0 + rs))
 
     return rsi
-
 
 def manual_mfi(high, low, close, volume, length=14):
     """
@@ -76,7 +75,6 @@ def manual_mfi(high, low, close, volume, length=14):
 
     return mfi
 
-
 # ===============================
 # 1. Function to get the verified Nifty 100 List
 # ===============================
@@ -100,7 +98,6 @@ def get_nifty_100_list():
         'SURLINGARD.NS', 'SRF.NS'
     ]
     return nifty_100_list
-
 
 # ===============================
 # 2. Function to get the Nifty Large+Midcap 250 List
@@ -157,14 +154,13 @@ def get_nifty_large_midcap_250_list():
 
     # Combine and Deduplicate (Keep Unique List of 250)
     combined_list = base + midcaps
-    unique_list = list(dict.fromkeys(combined_list))  # Remove duplicates
+    unique_list = list(dict.fromkeys(combined_list)) # Remove duplicates
 
     # Limit to ~250 if list gets too large
     if len(unique_list) > 250:
         return unique_list[:250]
     else:
         return unique_list
-
 
 # ===============================
 # 3. Function to fetch Data from Custom Date Range
@@ -194,7 +190,6 @@ def fetch_stock_data(ticker: str, start_date: str = '2021-01-01', end_date: str 
         return history
     except Exception as e:
         return None
-
 
 # ===============================
 # 4. Function to Normalize Column Names and Standardize
@@ -228,7 +223,6 @@ def normalize_columns(df):
 
     return df
 
-
 # ===============================
 # 5. Function to Remove Timezones from DataFrame
 # ===============================
@@ -242,7 +236,6 @@ def remove_timezones(df):
             df = df.copy()
             df[col] = df[col].dt.tz_localize(None)
     return df
-
 
 # ===============================
 # 6. Function to Calculate Technical Indicators - UPDATED
@@ -426,8 +419,7 @@ def calculate_technical_indicators(df: pd.DataFrame):
         try:
             if 'volume' in group.columns:
                 if group['volume'].notna().any():
-                    group['mfi_14'] = manual_mfi(group['high'], group['low'], group['close'], group['volume'],
-                                                 length=14)
+                    group['mfi_14'] = manual_mfi(group['high'], group['low'], group['close'], group['volume'], length=14)
                 else:
                     group['mfi_14'] = np.nan
             else:
@@ -458,7 +450,6 @@ def calculate_technical_indicators(df: pd.DataFrame):
     else:
         return pd.DataFrame()
 
-
 # ===============================
 # 7. Function to Sort DataFrame Before Export
 # ===============================
@@ -470,229 +461,246 @@ def sort_dataframe(df):
     df = df.sort_values(by=['date', 'ticker'], ascending=[False, True])
     return df
 
-
 # ===============================
 # 8. Function to Save and Download File (UPDATED)
 # ===============================
-def save_and_download_excel(df, filename, download_to_colab=False):
-    """Saves DataFrame to Excel and optionally triggers download in Google Colab."""
+def save_and_download_excel(df, filename):
+    """Saves DataFrame to Excel."""
     try:
         if 'date' in df.columns:
-            # FIX: Check if datetime type before using .dt
             if pd.api.types.is_datetime64_any_dtype(df['date']):
                 df['date'] = df['date'].dt.strftime('%d-%m-%Y')
-            # If not datetime (e.g. object/strings), just convert to str
             elif not df['date'].isna().all():
-                df['date'] = df['date'].astype(str)
+                 df['date'] = df['date'].astype(str)
 
         # Save to BytesIO for Streamlit download
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df.to_excel(writer, index=False)
-
+        
         output.seek(0)
-
-        # Log output
-        print(f"✅ File created successfully in memory!")
-        print(f" Filename: {filename}")
-        print(f" File Size: {os.path.getsize(output) / 1024:.2f} KB")
-
+        
         return output
 
     except Exception as e:
         print(f"❌ Error saving Excel file: {str(e)}")
         return None
 
-
 # ===============================
-# 9. Main Execution Flow
+# [STREAMLIT UI WRAPPER] - DO NOT EDIT BELOW
 # ===============================
-def main():
-    print("=" * 80)
-    print("Starting Nifty 100 & Nifty 250 Data Fetching and Analysis")
-    print("=" * 80)
 
-    # Check if running in Google Colab
-    in_colab = False
-    try:
-        from google.colab import files
-        in_colab = True
-    except:
-        in_colab = False
-
-    # Define the start date for the script's data fetching
-    script_start_date = '2021-01-01'
-
-    print(f"\n📱 Environment: {'Google Colab' if in_colab else 'Streamlit Cloud / Local'}")
-    print(f"📂 Start Date: {script_start_date}")
-    print(f"📅 End Date: {datetime.now().strftime('%d-%m-%Y')}")
-
-    # --- 1. Get Official Ticker Lists ---
-    tickers_nifty_100 = get_nifty_100_list()
-    tickers_nifty_250 = get_nifty_large_midcap_250_list()
-
-    # Remove duplicates between lists if overlapping (to avoid double fetching same stock)
-    unique_tickers = list(dict.fromkeys(tickers_nifty_100 + tickers_nifty_250))
-
-    # Better approach for source identification during fetch:
-    print(f"✓ Fetched {len(tickers_nifty_100)} Nifty 100 tickers.")
-    print(f"✓ Fetched {len(tickers_nifty_250)} Nifty 250 tickers.")
-    print(f"✓ Total Unique Tickers: {len(unique_tickers)}")
-
-    # --- 2. Fetch Data for all stocks ---
-    data_frames_list = []
-    end_date = datetime.now().strftime('%Y-%m-%d')
-
-    for idx, ticker in enumerate(unique_tickers):
-        # Determine source (100 or 250)
-        is_nifty_100 = ticker in tickers_nifty_100
-        source = 'NIFTY_100' if is_nifty_100 else 'NIFTY_250'
-
-        time.sleep(0.3)  # Increased sleep for more stocks
-
-        df = fetch_stock_data(ticker, start_date=script_start_date, end_date=end_date)
-
-        if df is not None:
-            df = normalize_columns(df)
-            # Add source column
-            df['source'] = source
-
-            data_frames_list.append(df)
-            print(f"✓ Fetched: {ticker} | Source: {source} | Shape: {df.shape}")
-        else:
-            print(f"⊘ SKIP: {ticker}")
-
-    # --- 3. Combine DataFrames ---
-    if data_frames_list:
-        full_df = pd.concat(data_frames_list, ignore_index=True)
-        full_df = normalize_columns(full_df)
-        full_df = remove_timezones(full_df)
-
-        # --- 4. Calculate Technical Indicators ---
-        print("\n" + "-" * 40)
-        print("Calculating Indicators: SMA, EMA, RSI, MFI + MACD, ADX, Supertrend, etc.")
-        print("-" * 40)
-        full_df = calculate_technical_indicators(full_df)
-
-        full_df = remove_timezones(full_df)
-
-        # --- 5. Sort DataFrame for Export (Descending Date) ---
-        print("\n" + "-" * 40)
-        print("Sorting DataFrame: Date (Descending), Ticker (Ascending) for Export")
-        print("-" * 40)
-        full_df = sort_dataframe(full_df)
-
-        # --- 6. Display Summary Statistics ---
-        print("\n" + "=" * 80)
-        print("Analysis Summary:")
-        print(f"Total Rows: {len(full_df)}")
-        print(f"Total Tickers: {full_df['ticker'].nunique()}")
-        print(f"Columns: {len(full_df.columns)}")
-
-        print("\n" + "-" * 40)
-        print("Distribution by Source:")
-        if 'source' in full_df.columns:
-            print(full_df['source'].value_counts())
-
-        # --- 7. Check MFI for a sample stock ---
-        sample_stock = full_df[full_df['ticker'].str.lower() == 'reliance.ns'].dropna()
-        if not sample_stock.empty:
-            print("\n" + "-" * 40)
-            print("MFI Sample for RELIANCE (Last 10 rows):")
-            print(sample_stock[['ticker', 'date', 'close', 'mfi_14']].tail(10).to_string())
-
-        # --- 8. Export to Excel with Separate Sheets ---
-        excel_filename = 'nifty_large_midcap_data.xlsx'
-        print("\n" + "=" * 80)
-        print("📤 Saving to Separate Sheets...")
-        print("=" * 80)
-
-        # --- Split Data by Source ---
-        df_100 = full_df[full_df['source'] == 'NIFTY_100']
-        df_250 = full_df[full_df['source'] == 'NIFTY_250']
-
-        # Create default DataFrames if groups are empty to ensure columns exist
-        if df_100.empty:
-            df_100 = pd.DataFrame(columns=full_df.columns)
-        if df_250.empty:
-            df_250 = pd.DataFrame(columns=full_df.columns)
-
-        # --- 9. Save using ExcelWriter to separate sheets ---
-        try:
-            with pd.ExcelWriter(excel_filename, engine='openpyxl') as writer:
-                df_100.to_excel(writer, sheet_name='NIFTY_100', index=False)
-                df_250.to_excel(writer, sheet_name='NIFTY_LARGE_MIDCAP', index=False)
-
-                file_saved = True
-
-        except Exception as e:
-            print(f"❌ Error saving Excel file: {str(e)}")
-            file_saved = False
-
+# Define all indicator functions that will be plotted
+def plot_price_chart(df, ticker):
+    """Plots price chart for selected stock(s)"""
+    if ticker == 'both':
+        # Both stocks
+        df_selected = df[df['ticker'].isin(stock_selection[0]) & df['ticker'].isin(stock_selection[1])]
     else:
-        print("\n❌ No data to export.")
+        # Single stock
+        df_selected = df[df['ticker'] == ticker]
 
-    return full_df
+    if df_selected.empty:
+        st.warning(f"No data for {ticker}")
+        return
 
-
-# ===============================
-# [STREAMLIT UI WRAPPER] - ADDED FOR DEPLOYMENT
-# ===============================
-def fetch_all_data_for_streamlit():
-    """Wrapper to run logic inside Streamlit cache"""
-    import streamlit as st
-
-    if not 'nifty_data' in st.session_state:
-        print("\n🚀 Starting Nifty 100 & Nifty 250 Data Script...")
-        try:
-            df = main()
-            # If success
-            if df is not None:
-                st.session_state['nifty_data'] = df
-                return df
-            else:
-                return None
-        except Exception as e:
-            st.error(f"Error fetching data: {str(e)}")
-            return None
-
-    return st.session_state['nifty_data']
-
-
-# ===============================
-# STREAMLIT USER INTERFACE
-# ===============================
-st.set_page_config(page_title="Nifty Stock Analyzer", layout="wide")
-
-st.title("📈 Nifty 100 & 250 Technical Analyzer")
-st.write("Click the button below to fetch historical stock data and calculate technical indicators (RSI, MACD, etc.).")
-
-# Create a button to start the process
-if st.button("Fetch & Calculate Data"):
+    # Use last 50 days for cleaner chart
+    df_plot = df_selected.tail(50).set_index('date')
     
-    # Show a spinning loading indicator while your functions run
-    with st.spinner("Fetching data from Yahoo Finance... This will take a few minutes..."):
+    fig = go.Figure()
+    
+    # Add Close Price
+    fig.add_trace(go.Candlestick(
+        x=df_plot.index,
+        open=df_plot['open'],
+        high=df_plot['high'],
+        low=df_plot['low'],
+        close=df_plot['close'],
+        name='Price', increasing='green', decreasing='red'
+    ))
+    
+    # Add 200 SMA
+    fig.add_trace(go.Scatter(
+        x=df_plot.index,
+        y=df_plot['sma_200'],
+        line=dict(dash='dash'),
+        name='SMA 200'
+    ))
+    
+    # Add 50 SMA
+    fig.add_trace(go.Scatter(
+        x=df_plot.index,
+        y=df_plot['sma_50'],
+        line=dict(dash='dash'),
+        name='SMA 50'
+    ))
+    
+    fig.update_layout(
+        height=400,
+        xaxis_rangeslider_visible=False,
+        title='Price Chart',
+        yaxis={'title': 'Price'}
+    )
+    
+    return fig
+
+def plot_indicator_chart(df, ticker, indicator, indicator_name):
+    """Plots indicator chart for selected stock(s)"""
+    if ticker == 'both':
+        df_selected = df[df['ticker'].isin(stock_selection[0]) & df['ticker'].isin(stock_selection[1])]
+    else:
+        df_selected = df[df['ticker'] == ticker]
+
+    if df_selected.empty:
+        st.warning(f"No data for {indicator_name}")
+        return
+
+    # Use last 100 rows for indicators
+    df_plot = df_selected.tail(100).set_index('date')
+    
+    # Extract indicator column
+    if indicator in df_plot.columns:
+        fig = go.Figure()
         
-        # Trigger your data fetching function
-        df = fetch_all_data_for_streamlit()
+        fig.add_trace(go.Scatter(
+            x=df_plot.index,
+            y=df_plot[indicator],
+            mode='lines',
+            name=indicator_name,
+            line=dict(color='blue')
+        ))
         
-        if df is not None and not df.empty:
-            st.success("✅ Data calculated successfully!")
+        fig.update_layout(
+            height=400,
+            xaxis_rangeslider_visible=False,
+            title=indicator_name,
+            yaxis={'title': indicator_name}
+        )
+        
+        return fig
+    else:
+        return None
+
+# Set page config
+st.set_page_config(page_title="Nifty Analytics", layout="wide")
+
+# Initialize session state for selections
+if 'nifty_data' not in st.session_state:
+    st.session_state['nifty_data'] = None
+if 'selected_stock' not in st.session_state:
+    st.session_state['selected_stock'] = 'RELIANCE.NS'
+if 'selected_indicators' not in st.session_state:
+    st.session_state['selected_indicators'] = []
+
+# Main UI
+st.title("📊 Nifty 100 & Large Midcap Analytics Dashboard")
+st.markdown("Select filter options to fetch and visualize technical indicators for Nifty 100/250")
+
+# Filter section
+st.sidebar.header("🎛️ Filter Settings")
+
+# Stock Filter: Nifty 100 vs Nifty 250
+data_available = 'nifty_data' in st.session_state and st.session_state['nifty_data'] is not None
+
+if not data_available:
+    st.error("⚠️ Data not loaded yet. Please click 'Fetch Data' first.")
+else:
+    nifty_100_tickers = st.session_state['nifty_data'][st.session_state['nifty_data']['source'] == 'NIFTY_100']['ticker'].unique()
+    nifty_250_tickers = st.session_state['nifty_data'][st.session_state['nifty_data']['source'] == 'NIFTY_250']['ticker'].unique()
+    
+    all_tickers = set(nifty_100_tickers) | set(nifty_250_tickers)
+    ticker_dict = dict(enumerate(all_tickers))
+    ticker_list = [ticker for ticker in all_tickers]
+    
+    # Main Filter
+    nifty_filter = st.sidebar.selectbox(
+        "Filter: Nifty 100 or Nifty 250",
+        ['Nifty 100', 'Nifty 250']
+    )
+    
+    # Single Stock Selection
+    st.sidebar.header("📈 Stock Selection")
+    selected_stocks = st.sidebar.multiselect(
+        "Select Stock(s) to Show:",
+        ticker_list,
+        default=[st.session_state['selected_stock']] if st.session_state['selected_stock'] else []
+    )
+    
+    # Compare Mode
+    compare_mode = st.sidebar.radio(
+        "Compare Stocks:",
+        ['Single Stock', 'Compare Two Stocks']
+    )
+    
+    if compare_mode == 'Compare Two Stocks' and len(selected_stocks) >= 2:
+        stock_selection = selected_stocks
+        comparison_mode = 'two'
+    else:
+        stock_selection = [selected_stocks[0]] if selected_stocks else ['RELIANCE.NS']
+        comparison_mode = 'single'
+    
+    # Indicator Selection
+    st.sidebar.header("📊 Select Indicators")
+    indicator_options = ['Price', 'RSI 14', 'MACD', 'SMA 20', 'SMA 50', 'SMA 200', 
+                        'EMA 12', 'EMA 26', 'ADX 14', 'Supertrend', 
+                        'Stoch K', 'Stoch D', 'CCI', 'Williams %R']
+    
+    selected_indicators = st.sidebar.multiselect(
+        "Select Indicators to Display:",
+        indicator_options,
+        default=['Price', 'RSI 14', 'MACD']
+    )
+    
+    # Fetch Data
+    if st.button("🚀 Fetch Data"):
+        with st.spinner('📡 Fetching data and calculating indicators...'):
+            df = st.session_state['nifty_data']
+            # Convert indicator names to actual column names
+            indicator_mapping = {
+                'Price': 'close',
+                'RSI 14': 'rsi_14',
+                'MACD': 'macd',
+                'SMA 20': 'sma_20',
+                'SMA 50': 'sma_50',
+                'SMA 200': 'sma_200',
+                'EMA 12': 'ema_12',
+                'EMA 26': 'ema_26',
+                'ADX 14': 'adx_14',
+                'Supertrend': 'supertrend',
+                'Stoch K': 'stoch_k_14',
+                'Stoch D': 'stoch_d_14',
+                'CCI': 'cci_20',
+                'Williams %R': 'williams_r_14'
+            }
             
-            # Show a preview table directly on the website
-            st.write("### Data Preview")
-            st.dataframe(df.head(100))
+            # Display charts in columns based on selected indicators
+            num_indicators = len(indicator_options)
+            num_columns = 4
+            num_rows = (num_indicators + num_columns - 1) // num_columns
             
-            # Prepare the Excel file for download
-            excel_file = save_and_download_excel(df, "nifty_data.xlsx")
-            
-            # Create a download button for the user
-            if excel_file:
+            for i, indicator in enumerate(selected_indicators):
+                col = indicator_mapping.get(indicator, indicator)
+                if col in df.columns:
+                    fig = plot_indicator_chart(df, 'RELIANCE.NS', col, indicator)
+                    if fig:
+                        if i < num_indicators:
+                            # Show first N indicators
+                            st.plotly_chart(fig)
+                            st.caption(f"Filter: {nifty_filter} | Stock: {selected_stocks[0]}")
+    
+            # Download Button
+            if 'nifty_data' in st.session_state and st.session_state['nifty_data'] is not None:
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    st.session_state['nifty_data'].to_excel(writer, index=False)
+                output.seek(0)
                 st.download_button(
-                    label="📥 Download Full Excel Report",
-                    data=excel_file.getvalue(),
-                    file_name="Nifty_Technical_Data.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    label="📥 Download All Data (Excel)",
+                    data=output.getvalue(),
+                    file_name="nifty_data.xlsx",
+                    mime="application/vnd.ms-excel"
                 )
-        else:
-            st.error("❌ Failed to fetch data. Please check the Streamlit logs.")
+
+else:
+    # Placeholder
+    st.info("Click 'Fetch Data' to load the dashboard and view charts.")
