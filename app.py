@@ -123,34 +123,47 @@ def fetch_stock_data_bulk(tickers, start_date='2021-01-01', end_date=None):
     if end_date is None:
         end_date = datetime.now().strftime('%Y-%m-%d')
     
-    # Use yfinance bulk download
     try:
+        # yfinance works perfectly with a list of strings
         data = yf.download(
             tickers,
             start=start_date,
             end=end_date,
             group_by='ticker',
-            auto_adjust=True
+            auto_adjust=True,
+            progress=False
         )
         
         dfs_list = []
         for ticker in tickers:
-            if ticker in data.columns:
-                df_ticker = data[ticker]
+            df_ticker = pd.DataFrame()
+            
+            # Handle MultiIndex (multiple tickers downloaded) vs Single Index (one ticker)
+            if isinstance(data.columns, pd.MultiIndex):
+                if ticker in data.columns.get_level_values(0):
+                    df_ticker = data[ticker].copy()
+            else:
+                # If columns aren't MultiIndex, yfinance returned a flat DataFrame for a single ticker
+                if len(tickers) == 1 or len(data.columns.intersection(['Open', 'Close'])) > 0:
+                    df_ticker = data.copy()
+            
+            if not df_ticker.empty:
                 df_ticker = df_ticker.reset_index()
                 df_ticker['Ticker'] = ticker
                 
-                # Rename columns to snake case
+                # Rename columns to snake case to match your indicator functions
                 df_ticker.columns = df_ticker.columns.str.lower()
                 
                 # Convert date to proper format
-                df_ticker['date'] = pd.to_datetime(df_ticker['date']).dt.tz_localize(None)
+                if 'date' in df_ticker.columns:
+                    df_ticker['date'] = pd.to_datetime(df_ticker['date']).dt.tz_localize(None)
                 
                 dfs_list.append(df_ticker)
         
         if dfs_list:
             return pd.concat(dfs_list, ignore_index=True)
         return None
+        
     except Exception as e:
         print(f"Error in bulk fetch: {str(e)}")
         return None
@@ -621,7 +634,7 @@ def main():
                     print(f"Fetching chunk {i+1}-{i+chunk_size} of {len(all_tickers)}")
                     
                     if chunk:
-                        df_chunk = fetch_stock_data_bulk(','.join(chunk))
+                        df_chunk = fetch_stock_data_bulk(chunk)
                         if df_chunk is not None and not df_chunk.empty:
                             dfs_list.append(df_chunk)
                             time.sleep(1)  # Add delay between chunks to avoid rate limits
