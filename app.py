@@ -290,7 +290,7 @@ def calculate_technical_indicators(df: pd.DataFrame):
         # Calculate SAR
         try:
             psar_result = ta.psar(group['high'], group['low'], group['close'], af0=0.02, af=0.02, max_af=0.2)
-            if psar_result is not None and not psar = psar_result.empty:
+            if psar_result is not None and not psar_result.empty:
                 group['sar'] = psar_result.iloc[:, 0]
             else:
                 group['sar'] = np.nan
