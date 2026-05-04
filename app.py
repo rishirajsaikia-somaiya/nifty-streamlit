@@ -495,7 +495,7 @@ def show_screener(df):
     elif indicator == "ADX":
         adx_level = st.slider("ADX Level", 0, 100, 20)
         filtered_adx = df_screen.dropna(subset=['adx_14'])
-        filtered_adx = filtered_adx[filtered_ad = filtered_adx['adx_14'] > adx_level]
+        filtered_adx = filtered_adx[filtered_adx['adx_14'] > adx_level]
         st.dataframe(filtered_adx[['ticker', 'adx_14']])
     
     elif indicator == "Volume":
