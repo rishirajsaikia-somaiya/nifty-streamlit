@@ -6,30 +6,33 @@ from datetime import datetime
 import io
 
 # =========================================================================
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION & SESSION STATE
 # =========================================================================
 st.set_page_config(page_title="Live Nifty Screener", layout="wide")
 st.title("📈 Live Nifty Technical Screener")
+
+# Initialize session state so the app doesn't fetch data until requested
+if 'data_fetched' not in st.session_state:
+    st.session_state.data_fetched = False
 
 # =========================================================================
 # 2. TICKER LISTS
 # =========================================================================
 NIFTY_100_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS", 
-    "SBIN.NS", "INFY.NS", "LT.NS", "ITC.NS", "HINDUNILVR.NS", 
-    "AXISBANK.NS", "BAJFINANCE.NS", "MARUTI.NS", "KOTAKBANK.NS", "HCLTECH.NS", 
-    "TATAMOTORS.NS", "SUNPHARMA.NS", "ONGC.NS", "NTPC.NS", "M&M.NS", 
-    "POWERGRID.NS", "TITAN.NS", "ULTRACEMCO.NS", "COALINDIA.NS", "BAJAJFINSV.NS", 
-    "ADANIPORTS.NS", "TATASTEEL.NS", "ASIANPAINT.NS", "WIPRO.NS", "NESTLEIND.NS", 
-    "BAJAJ-AUTO.NS", "LTIM.NS", "GRASIM.NS", "TECHM.NS", "HINDALCO.NS", 
-    "ADANIENT.NS", "INDIGO.NS", "EICHERMOT.NS", "DRREDDY.NS", "TRENT.NS", 
-    "CIPLA.NS", "DIVISLAB.NS", "APOLLOHOSP.NS", "BRITANNIA.NS", "SHRIRAMFIN.NS", 
-    "HEROMOTOCO.NS", "TATACONSUM.NS", "BPCL.NS", "HDFCLIFE.NS", "SBILIFE.NS",
-    "HAL.NS", "ZOMATO.NS", "JIOFIN.NS", "SIEMENS.NS", "DLF.NS", 
-    "VBL.NS", "GODREJCP.NS", "PIDILITIND.NS", "ADANIGREEN.NS", "ADANIPOWER.NS", 
-    "TATAPOWER.NS", "AMBUJACEM.NS", "CHOLAFIN.NS", "LODHA.NS", "IOC.NS", 
-    "BANKBARODA.NS", "HAVELLS.NS", "TVSMOTOR.NS", "GAIL.NS", "BOSCHLTD.NS", 
-    "BEL.NS", "PNB.NS", "CANBK.NS", "RECLTD.NS", "PFC.NS", 
+    "SBIN.NS", "INFY.NS", "LT.NS", "ITC.NS", "HINDUNILVR.NS", "AXISBANK.NS", 
+    "BAJFINANCE.NS", "MARUTI.NS", "KOTAKBANK.NS", "HCLTECH.NS", "TATAMOTORS.NS", 
+    "SUNPHARMA.NS", "ONGC.NS", "NTPC.NS", "M&M.NS", "POWERGRID.NS", "TITAN.NS", 
+    "ULTRACEMCO.NS", "COALINDIA.NS", "BAJAJFINSV.NS", "ADANIPORTS.NS", 
+    "TATASTEEL.NS", "ASIANPAINT.NS", "WIPRO.NS", "NESTLEIND.NS", "BAJAJ-AUTO.NS", 
+    "LTIM.NS", "GRASIM.NS", "TECHM.NS", "HINDALCO.NS", "ADANIENT.NS", "INDIGO.NS", 
+    "EICHERMOT.NS", "DRREDDY.NS", "TRENT.NS", "CIPLA.NS", "DIVISLAB.NS", 
+    "APOLLOHOSP.NS", "BRITANNIA.NS", "SHRIRAMFIN.NS", "HEROMOTOCO.NS", 
+    "TATACONSUM.NS", "BPCL.NS", "HDFCLIFE.NS", "SBILIFE.NS", "HAL.NS", "ZOMATO.NS", 
+    "JIOFIN.NS", "SIEMENS.NS", "DLF.NS", "VBL.NS", "GODREJCP.NS", "PIDILITIND.NS", 
+    "ADANIGREEN.NS", "ADANIPOWER.NS", "TATAPOWER.NS", "AMBUJACEM.NS", "CHOLAFIN.NS", 
+    "LODHA.NS", "IOC.NS", "BANKBARODA.NS", "HAVELLS.NS", "TVSMOTOR.NS", "GAIL.NS", 
+    "BOSCHLTD.NS", "BEL.NS", "PNB.NS", "CANBK.NS", "RECLTD.NS", "PFC.NS", 
     "POLYCAB.NS", "ABB.NS", "ICICIGI.NS", "TIINDIA.NS", "CUMMINSIND.NS", 
     "TORNTPHARM.NS", "SRF.NS", "ATGL.NS", "MAXHEALTH.NS", "MUTHOOTFIN.NS", 
     "ZYDUSLIFE.NS", "ICICIPRULI.NS", "ALKEM.NS", "INDIANB.NS", "YESBANK.NS", 
@@ -38,26 +41,25 @@ NIFTY_100_TICKERS = [
 ]
 
 NIFTY_MIDCAP_100_TICKERS = [
-    "LUPIN.NS", "AUBANK.NS", "IDEA.NS", "NMDC.NS", "SAIL.NS", 
-    "OBEROIRLTY.NS", "COROMANDEL.NS", "PRESTIGE.NS", "SUZLON.NS", "PAYTM.NS", 
-    "DIXON.NS", "MRF.NS", "LINDEINDIA.NS", "PETRONET.NS", "KPITTECH.NS", 
-    "PERSISTENT.NS", "COFORGE.NS", "CONCOR.NS", "ASTRAL.NS", "MFSL.NS", 
-    "PAGEIND.NS", "VOLTAS.NS", "MPHASIS.NS", "JUBLFOOD.NS", "UBL.NS", 
-    "IGL.NS", "GMRINFRA.NS", "BIOCON.NS", "AIAENG.NS", "LICHSGFIN.NS", 
-    "BANDHANBNK.NS", "BANKINDIA.NS", "UNIONBANK.NS", "POONAWALLA.NS", "STARHEALTH.NS", 
-    "M&MFIN.NS", "GLENMARK.NS", "TORNTPOWER.NS", "MINDSPACE.NS", "FEDERALBNK.NS", 
-    "GICRE.NS", "SONACOMS.NS", "BALKRISIND.NS", "NIACL.NS", "CRISIL.NS", 
-    "TATAELXSI.NS", "HONAUT.NS", "PBFINTECH.NS", "ABBOTINDIA.NS", "SUPREMEIND.NS", 
-    "BSE.NS", "MCX.NS", "IRFC.NS", "RVNL.NS", "IRCTC.NS", 
-    "MAZDOCK.NS", "COCHINSHIP.NS", "FACT.NS", "NHPC.NS", "SJVN.NS", 
-    "TATACHEM.NS", "DEEPAKNTR.NS", "GUJGASLTD.NS", "AARTIIND.NS", "NAVINFLUOR.NS", 
-    "SYNGENE.NS", "LAURUSLABS.NS", "IPCALAB.NS", "FORTIS.NS", "LALPATHLAB.NS", 
-    "DEVYANI.NS", "ABFRL.NS", "ZEEL.NS", "SUNTV.NS", "BATAINDIA.NS", 
-    "RELAXO.NS", "KPRMILL.NS", "TRIDENT.NS", "WELSPUNLIV.NS", "RADICO.NS", 
-    "ESCORTS.NS", "ASHOKLEY.NS", "ENDURANCE.NS", "UNOMINDA.NS", "EXIDEIND.NS", 
-    "KALYANKJIL.NS", "APOLLOTYRE.NS", "CEATLTD.NS", "RAMCOCEM.NS", "DALBHARAT.NS", 
-    "JKCEMENT.NS", "INDIACEM.NS", "GODREJPROP.NS", "PHOENIXLTD.NS", "BRIGADE.NS", 
-    "NBCC.NS", "HUDCO.NS", "JINDALSTEL.NS", "NATIONALUM.NS", "HINDCOPPER.NS"
+    "LUPIN.NS", "AUBANK.NS", "IDEA.NS", "NMDC.NS", "SAIL.NS", "OBEROIRLTY.NS", 
+    "COROMANDEL.NS", "PRESTIGE.NS", "SUZLON.NS", "PAYTM.NS", "DIXON.NS", "MRF.NS", 
+    "LINDEINDIA.NS", "PETRONET.NS", "KPITTECH.NS", "PERSISTENT.NS", "COFORGE.NS", 
+    "CONCOR.NS", "ASTRAL.NS", "MFSL.NS", "PAGEIND.NS", "VOLTAS.NS", "MPHASIS.NS", 
+    "JUBLFOOD.NS", "UBL.NS", "IGL.NS", "GMRINFRA.NS", "BIOCON.NS", "AIAENG.NS", 
+    "LICHSGFIN.NS", "BANDHANBNK.NS", "BANKINDIA.NS", "UNIONBANK.NS", "POONAWALLA.NS", 
+    "STARHEALTH.NS", "M&MFIN.NS", "GLENMARK.NS", "TORNTPOWER.NS", "MINDSPACE.NS", 
+    "FEDERALBNK.NS", "GICRE.NS", "SONACOMS.NS", "BALKRISIND.NS", "NIACL.NS", 
+    "CRISIL.NS", "TATAELXSI.NS", "HONAUT.NS", "PBFINTECH.NS", "ABBOTINDIA.NS", 
+    "SUPREMEIND.NS", "BSE.NS", "MCX.NS", "IRFC.NS", "RVNL.NS", "IRCTC.NS", 
+    "MAZDOCK.NS", "COCHINSHIP.NS", "FACT.NS", "NHPC.NS", "SJVN.NS", "TATACHEM.NS", 
+    "DEEPAKNTR.NS", "GUJGASLTD.NS", "AARTIIND.NS", "NAVINFLUOR.NS", "SYNGENE.NS", 
+    "LAURUSLABS.NS", "IPCALAB.NS", "FORTIS.NS", "LALPATHLAB.NS", "DEVYANI.NS", 
+    "ABFRL.NS", "ZEEL.NS", "SUNTV.NS", "BATAINDIA.NS", "RELAXO.NS", "KPRMILL.NS", 
+    "TRIDENT.NS", "WELSPUNLIV.NS", "RADICO.NS", "ESCORTS.NS", "ASHOKLEY.NS", 
+    "ENDURANCE.NS", "UNOMINDA.NS", "EXIDEIND.NS", "KALYANKJIL.NS", "APOLLOTYRE.NS", 
+    "CEATLTD.NS", "RAMCOCEM.NS", "DALBHARAT.NS", "JKCEMENT.NS", "INDIACEM.NS", 
+    "GODREJPROP.NS", "PHOENIXLTD.NS", "BRIGADE.NS", "NBCC.NS", "HUDCO.NS", 
+    "JINDALSTEL.NS", "NATIONALUM.NS", "HINDCOPPER.NS"
 ]
 
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
@@ -111,19 +113,17 @@ def calculate_indicators(df):
 
     high_9 = df['High'].rolling(window=9).max()
     low_9 = df['Low'].rolling(window=9).min()
-    df['Ichimoku_Tenkan_sen'] = (high_9 + low_9) / 2
+    df['Ichimoku_Tenkan'] = (high_9 + low_9) / 2
 
     high_26 = df['High'].rolling(window=26).max()
     low_26 = df['Low'].rolling(window=26).min()
-    df['Ichimoku_Kijun_sen'] = (high_26 + low_26) / 2
+    df['Ichimoku_Kijun'] = (high_26 + low_26) / 2
 
-    df['Ichimoku_Senkou_Span_A'] = ((df['Ichimoku_Tenkan_sen'] + df['Ichimoku_Kijun_sen']) / 2).shift(26)
+    df['Ichimoku_Span_A'] = ((df['Ichimoku_Tenkan'] + df['Ichimoku_Kijun']) / 2).shift(26)
 
     high_52 = df['High'].rolling(window=52).max()
     low_52 = df['Low'].rolling(window=52).min()
-    df['Ichimoku_Senkou_Span_B'] = ((high_52 + low_52) / 2).shift(26)
-
-    df['Ichimoku_Chikou_Span'] = df['Close'].shift(-26)
+    df['Ichimoku_Span_B'] = ((high_52 + low_52) / 2).shift(26)
 
     high, low, close = df['High'].values, df['Low'].values, df['Close'].values
     psar = np.zeros(len(df))
@@ -200,16 +200,12 @@ def fetch_and_process_group(tickers_list):
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
-        final_combined_df = final_combined_df.reset_index()
-        final_combined_df = final_combined_df.sort_values(by=['Date', 'Ticker'], ascending=[False, True])
-        final_combined_df = final_combined_df.set_index('Date')
-        cols = ['Ticker'] + [col for col in final_combined_df.columns if col != 'Ticker']
-        return final_combined_df[cols]
+        # Drop rows with NaN (like the first 52 days for Ichimoku)
+        final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_14'], inplace=True)
+        return final_combined_df
     else:
         return pd.DataFrame()
 
-# TTL=3600 means this function will only hit Yahoo Finance once per hour.
-# For the rest of the hour, it instantly serves the dataframe from memory!
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
     n100 = fetch_and_process_group(NIFTY_100_TICKERS)
@@ -217,11 +213,17 @@ def load_all_market_data():
     return n100, n200
 
 # =====================================================================
-# 5. UI: FETCH DATA BUTTON
+# 5. UI: EXPLICIT FETCH BUTTON
 # =====================================================================
-# This creates a friendly user experience, showing a loading bar 
-# while the server fetches the 200 stocks in the background.
-with st.spinner("Connecting to live market data... (This takes about 45-60 seconds on the first run)"):
+if not st.session_state.data_fetched:
+    st.info("👋 Welcome to the Nifty Technical Screener. Click the button below to pull the latest data from Yahoo Finance.")
+    if st.button("🚀 Fetch Live Market Data (Takes ~45 seconds)", use_container_width=True):
+        st.session_state.data_fetched = True
+        st.rerun()  # Forces the page to reload and bypass this block
+    st.stop()  # Stops the rest of the page from rendering until button is clicked
+
+# If we made it here, data_fetched is True. Let's load the data.
+with st.spinner("Processing technical indicators..."):
     df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
@@ -229,92 +231,144 @@ if df_100.empty or df_200.empty:
     st.stop()
 
 # =====================================================================
-# 6. TOP PANEL: OVERVIEW METRICS
+# 6. TOP PANEL: OVERVIEW METRICS & INDEX SELECTION
 # =====================================================================
 selected_index = st.radio("Select Index to Screen", ["Nifty 100", "Nifty 200"], horizontal=True)
 df = df_100 if selected_index == "Nifty 100" else df_200
 
-latest_date = df.index.max()
-# Isolate just the rows matching the most recent trading day
-current_data = df[df.index == latest_date]
+# Reset index so 'Date' is a column we can filter easily
+df = df.reset_index()
+# Convert datetime to date for easier filtering
+df['Date'] = pd.to_datetime(df['Date']).dt.date
 
-st.markdown(f"### Index Overview (As of {pd.to_datetime(latest_date).strftime('%Y-%m-%d')})")
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Stocks Tracked", len(current_data['Ticker'].unique()))
-col2.metric("Average RSI", round(current_data['RSI_14'].mean(), 2))
-col3.metric("Stocks Above SMA (14)", len(current_data[current_data['Close'] > current_data['SMA_14']]))
+min_available_date = df['Date'].min()
+max_available_date = df['Date'].max()
 
 st.divider()
 
 # =====================================================================
 # 7. SIDEBAR: SCREENER CONTROLS
 # =====================================================================
-st.sidebar.header("Filter Criteria")
+st.sidebar.header("🗓️ Timeframe")
 
-min_rsi, max_rsi = st.sidebar.slider(
-    "RSI (14) Range", 
-    min_value=0.0, max_value=100.0, value=(30.0, 70.0)
+# User can pick a single date OR a range
+selected_dates = st.sidebar.date_input(
+    "Select Date or Date Range",
+    value=(max_available_date, max_available_date),
+    min_value=min_available_date,
+    max_value=max_available_date
 )
 
-macd_status = st.sidebar.selectbox(
-    "MACD Signal", 
-    ["All", "Bullish (MACD > Signal)", "Bearish (MACD < Signal)"]
-)
+# Handle the tuple return of date_input
+if len(selected_dates) == 2:
+    start_date, end_date = selected_dates
+else:
+    start_date = selected_dates[0]
+    end_date = selected_dates[0]
+
+st.sidebar.divider()
+st.sidebar.header("🎛️ Filter Criteria")
+
+# --- OSCILLATORS (Grouped in an expander) ---
+with st.sidebar.expander("Momentum & Oscillators", expanded=True):
+    min_rsi, max_rsi = st.slider("RSI (14)", 0.0, 100.0, (0.0, 100.0))
+    min_mfi, max_mfi = st.slider("Money Flow Index (14)", 0.0, 100.0, (0.0, 100.0))
+    min_cci, max_cci = st.slider("CCI (20)", -300.0, 300.0, (-300.0, 300.0))
+    min_will, max_will = st.slider("Williams %R", -100.0, 0.0, (-100.0, 0.0))
+
+# --- TREND INDICATORS (Grouped in an expander) ---
+with st.sidebar.expander("Trend & Moving Averages", expanded=False):
+    macd_status = st.selectbox("MACD Signal", ["All", "Bullish (MACD > Signal)", "Bearish (MACD < Signal)"])
+    sma_status = st.selectbox("Price vs SMA (14)", ["All", "Above SMA", "Below SMA"])
+    psar_status = st.selectbox("Parabolic SAR", ["All", "Bullish (Price > PSAR)", "Bearish (Price < PSAR)"])
+    ichimoku_status = st.selectbox("Ichimoku Cloud", ["All", "Price Above Cloud", "Price Below Cloud", "Price Inside Cloud"])
 
 # =====================================================================
-# 8. FILTERING LOGIC
+# 8. APPLYING THE FILTERS
 # =====================================================================
-filtered_data = current_data[
-    (current_data['RSI_14'] >= min_rsi) & 
-    (current_data['RSI_14'] <= max_rsi)
+# 1. Filter by Date Range
+filtered_data = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
+
+# 2. Filter by Oscillators
+filtered_data = filtered_data[
+    (filtered_data['RSI_14'] >= min_rsi) & (filtered_data['RSI_14'] <= max_rsi) &
+    (filtered_data['MFI_14'] >= min_mfi) & (filtered_data['MFI_14'] <= max_mfi) &
+    (filtered_data['CCI_20'] >= min_cci) & (filtered_data['CCI_20'] <= max_cci) &
+    (filtered_data['Williams_%R'] >= min_will) & (filtered_data['Williams_%R'] <= max_will)
 ]
 
+# 3. Filter by Trend
 if macd_status == "Bullish (MACD > Signal)":
     filtered_data = filtered_data[filtered_data['MACD'] > filtered_data['MACD_Signal']]
 elif macd_status == "Bearish (MACD < Signal)":
     filtered_data = filtered_data[filtered_data['MACD'] < filtered_data['MACD_Signal']]
 
+if sma_status == "Above SMA":
+    filtered_data = filtered_data[filtered_data['Close'] > filtered_data['SMA_14']]
+elif sma_status == "Below SMA":
+    filtered_data = filtered_data[filtered_data['Close'] < filtered_data['SMA_14']]
+
+if psar_status == "Bullish (Price > PSAR)":
+    filtered_data = filtered_data[filtered_data['Close'] > filtered_data['PSAR']]
+elif psar_status == "Bearish (Price < PSAR)":
+    filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
+
+if ichimoku_status == "Price Above Cloud":
+    filtered_data = filtered_data[(filtered_data['Close'] > filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] > filtered_data['Ichimoku_Span_B'])]
+elif ichimoku_status == "Price Below Cloud":
+    filtered_data = filtered_data[(filtered_data['Close'] < filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] < filtered_data['Ichimoku_Span_B'])]
+elif ichimoku_status == "Price Inside Cloud":
+    # Inside cloud means it's between Span A and Span B
+    condition_1 = (filtered_data['Close'] <= filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] >= filtered_data['Ichimoku_Span_B'])
+    condition_2 = (filtered_data['Close'] >= filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] <= filtered_data['Ichimoku_Span_B'])
+    filtered_data = filtered_data[condition_1 | condition_2]
+
 # =====================================================================
 # 9. MAIN VIEW: DISPLAY RESULTS
 # =====================================================================
-st.markdown(f"### Screened Results")
-st.write(f"Showing **{len(filtered_data)}** stocks matching your criteria.")
+# Header changes based on if it's a single day or a range
+if start_date == end_date:
+    st.markdown(f"### Screened Results for **{start_date}**")
+else:
+    st.markdown(f"### Screened Results from **{start_date}** to **{end_date}**")
 
-# Display clean dataframe to the user
-display_cols = ['Ticker', 'Close', 'SMA_14', 'RSI_14', 'MACD', 'MACD_Signal']
-display_df = filtered_data[display_cols].copy()
+st.write(f"Showing **{len(filtered_data)}** rows matching your criteria.")
 
-# Round numbers purely for visual display
-display_df['Close'] = display_df['Close'].round(2)
-display_df['SMA_14'] = display_df['SMA_14'].round(2)
-display_df['RSI_14'] = display_df['RSI_14'].round(2)
-display_df['MACD'] = display_df['MACD'].round(2)
-display_df['MACD_Signal'] = display_df['MACD_Signal'].round(2)
+if not filtered_data.empty:
+    # Sort by Date (newest first) then Ticker
+    filtered_data = filtered_data.sort_values(by=['Date', 'Ticker'], ascending=[False, True])
 
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+    # Select columns to display
+    display_cols = ['Date', 'Ticker', 'Close', 'RSI_14', 'MFI_14', 'CCI_20', 'MACD', 'MACD_Signal', 'SMA_14', 'PSAR']
+    display_df = filtered_data[display_cols].copy()
+
+    # Round all numerical columns for cleaner display
+    for col in display_df.select_dtypes(include=['float64']).columns:
+        display_df[col] = display_df[col].round(2)
+
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+else:
+    st.warning("No stocks match the current filter criteria for the selected timeframe.")
 
 st.divider()
 
 # =====================================================================
-# 10. EXPORT FEATURE: IN-MEMORY DOWNLOAD (NO LOCAL FILES!)
+# 10. EXPORT FEATURE
 # =====================================================================
 st.markdown("### Export Data")
 
 if not filtered_data.empty:
     buffer = io.BytesIO()
     
-    # We reset the index here so the exact Date is pushed into a normal column for Excel
-    export_df = filtered_data.reset_index()
-
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        export_df.to_excel(writer, index=False, sheet_name='Screened Stocks')
+        # Exporting ALL indicators (not just the summary display columns)
+        filtered_data.to_excel(writer, index=False, sheet_name='Screened Stocks')
 
-    file_name_date = pd.to_datetime(latest_date).strftime('%Y-%m-%d')
+    file_name_tag = f"{start_date}" if start_date == end_date else f"{start_date}_to_{end_date}"
+    
     st.download_button(
         label="📥 Download Screened Stocks as Excel",
         data=buffer.getvalue(),
-        file_name=f"Screened_{selected_index.replace(' ', '_')}_{file_name_date}.xlsx",
+        file_name=f"Screened_{selected_index.replace(' ', '_')}_{file_name_tag}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-else:
-    st.info("No stocks match your current filters. Adjust the sliders to download data.")
