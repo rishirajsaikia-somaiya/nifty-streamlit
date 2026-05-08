@@ -3,11 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
-import time
-import random
-
-# THE PIVOT: Bypassing Yahoo entirely and using TradingView
-from tvDatafeed import TvDatafeed, Interval
+from yahooquery import Ticker
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -21,8 +17,6 @@ if 'data_fetched' not in st.session_state:
 # =========================================================================
 # 2. TICKER LISTS
 # =========================================================================
-# (Note: TradingView doesn't use the '.NS' suffix, but we keep it here 
-#  so your UI looks the same. The engine strips it out automatically.)
 NIFTY_100_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS", 
     "SBIN.NS", "INFY.NS", "LT.NS", "ITC.NS", "HINDUNILVR.NS", "AXISBANK.NS", 
@@ -70,7 +64,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE (Untouched Math)
+# 3. TECHNICAL INDICATOR ENGINE 
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -219,71 +213,84 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. TRADINGVIEW FETCH PROTOCOL
+# 4. YAHOOQUERY HIGH-SPEED ASYNC BACKEND (Bypasses IP Blocks)
 # =========================================================================
-def fetch_and_process_group(tickers_list):
-    processed_dfs = []
-    
-    st.write("### Live Fetch Log (TradingView Backend)")
-    progress_bar = st.progress(0)
+def fetch_all_data(tickers_list):
+    st.write("### Live Fetch Log")
     log_container = st.empty()
+    
+    log_container.info("🚀 Initiating high-speed asynchronous fetch via Mobile APIs...")
 
-    # Initialize TradingView as an anonymous guest
-    tv = TvDatafeed()
-
-    for i, ticker in enumerate(tickers_list):
-        progress_bar.progress((i + 1) / len(tickers_list))
+    try:
+        # asynchronous=True handles all the messy request batching automatically
+        t = Ticker(tickers_list, asynchronous=True)
+        df = t.history(period='2y')
         
-        try:
-            # TradingView doesn't use the ".NS" suffix for Indian stocks, so we strip it out
-            clean_ticker = ticker.replace('.NS', '')
+        if df.empty or isinstance(df, dict):
+            log_container.error("❌ Failed to pull market data.")
+            return pd.DataFrame()
             
-            # Fetch ~2.5 years of daily data from the NSE exchange
-            data = tv.get_hist(symbol=clean_ticker, exchange='NSE', interval=Interval.in_daily, n_bars=600)
-            
-            if data is None or data.empty:
-                log_container.warning(f"⚠️ {ticker} returned empty data from TradingView.")
-                continue
-                
-            if len(data) < 100:
-                continue
-
-            # TV returns lowercase columns. We capitalize them so our math engine recognizes them!
-            data = data.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
-            
-            # TV returns the index as 'datetime'. We rename it to 'Date'
-            data.index.name = 'Date'
-            
-            # Strip timezones
-            if data.index.tz is not None:
-                data.index = data.index.tz_localize(None)
-
-            calc_df = calculate_indicators(data)
-            calc_df['Ticker'] = ticker  # Put the .NS back so your UI matches exactly what you had
-            processed_dfs.append(calc_df)
-            
-            log_container.success(f"✅ Successfully processed {ticker}")
-            
-        except Exception as e:
-            log_container.error(f"❌ Failed processing {ticker}: {str(e)}")
-            
-        time.sleep(0.2) # Small breather for TV servers
-
-    progress_bar.empty()
-    log_container.empty()
-
-    if processed_dfs:
-        final_combined_df = pd.concat(processed_dfs)
-        final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
-        return final_combined_df
+        # Format the output to match our math engine
+        df = df.reset_index()
         
-    return pd.DataFrame()
+        # Drop rows where data failed to fetch (yq puts a string in 'error' column)
+        if 'error' in df.columns:
+            df = df[df['error'].isnull()]
+            
+        # Rename the lowercase columns to our required Title Case
+        df = df.rename(columns={
+            'symbol': 'Ticker',
+            'date': 'Date',
+            'open': 'Open',
+            'high': 'High',
+            'low': 'Low',
+            'close': 'Close',
+            'volume': 'Volume'
+        })
+        
+        # Ensure 'Date' handles timezones safely
+        df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+
+        processed_dfs = []
+        valid_tickers = df['Ticker'].unique()
+        
+        log_container.info("🧮 Calculating 33 indicators for the market...")
+        progress_bar = st.progress(0)
+
+        for i, ticker in enumerate(valid_tickers):
+            progress_bar.progress((i + 1) / len(valid_tickers))
+            
+            ticker_data = df[df['Ticker'] == ticker].copy()
+            
+            # Require at least 100 days of history so our 52-day math doesn't crash
+            if len(ticker_data) >= 100:
+                ticker_data = ticker_data.set_index('Date')
+                try:
+                    calc_df = calculate_indicators(ticker_data)
+                    calc_df['Ticker'] = ticker
+                    calc_df = calc_df.reset_index() # Bring Date back out of the index
+                    processed_dfs.append(calc_df)
+                except Exception:
+                    pass
+
+        progress_bar.empty()
+        log_container.success("✅ Data fetch and calculations complete!")
+
+        if processed_dfs:
+            final_combined_df = pd.concat(processed_dfs)
+            final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
+            return final_combined_df
+            
+        return pd.DataFrame()
+
+    except Exception as e:
+        log_container.error(f"❌ Execution Error: {str(e)}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating TradingView Fetcher. Bypassing Yahoo Finance completely...")
-    
-    df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
+    # Only fetch Nifty 200, then extract Nifty 100 from it.
+    df_200 = fetch_all_data(NIFTY_200_TICKERS)
     
     if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -297,7 +304,7 @@ def load_all_market_data():
 # =====================================================================
 if not st.session_state.data_fetched:
     st.info("👋 Welcome to the Nifty Technical Screener.")
-    if st.button("🚀 Fetch Live Data from TradingView (Takes ~1 Min)", use_container_width=True):
+    if st.button("🚀 Fetch Live Market Data", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
@@ -305,7 +312,7 @@ if not st.session_state.data_fetched:
 df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("🚨 CRITICAL FAILURE: Both Yahoo and TradingView APIs failed to return data.")
+    st.error("🚨 CRITICAL FAILURE: API returned empty data.")
     st.stop()
 
 # =====================================================================
@@ -314,7 +321,8 @@ if df_100.empty or df_200.empty:
 selected_index = st.radio("Select Index to Screen", ["Nifty 100", "Nifty 200"], horizontal=True)
 df = df_100 if selected_index == "Nifty 100" else df_200
 
-df = df.reset_index()
+# Safety reset just in case there's an overlapping index
+df = df.reset_index(drop=True)
 df['Date'] = pd.to_datetime(df['Date']).dt.date
 
 min_available_date = df['Date'].min()
