@@ -2,8 +2,8 @@ name: Daily Market Data Fetcher
 
 on:
   schedule:
-    - cron: '30 3-10 * * 1-5' # Runs at 17:00 IST every day automatically
-  workflow_dispatch: # Gives you a manual 'Run' button
+    - cron: '30 3-10 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -18,9 +18,8 @@ jobs:
           python-version: '3.10'
           
       - name: Install dependencies
-        run: |
-          pip install yfinance pandas numpy
-          
+        run: pip install -r requirements.txt
+        
       - name: Run fetcher
         run: python fetcher.py
         
