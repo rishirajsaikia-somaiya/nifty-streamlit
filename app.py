@@ -7,6 +7,7 @@ import requests
 from urllib.parse import quote
 import time
 import random
+import concurrent.futures
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -216,22 +217,19 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. GHOST FETCHER: BYPASSING THE CLOUD BAN VIA PUBLIC PROXIES
+# 4. GHOST FETCHER: MULTI-THREADED PROXY ROUTING
 # =========================================================================
 def fetch_single_stock_via_proxy(ticker):
     """
-    Manually parses Yahoo's raw JSON endpoint, routed through free CORS proxies 
-    so Yahoo never sees the Streamlit Server's blacklisted IP address.
+    Fetches raw JSON through CORS proxies. Runs inside a worker thread.
     """
-    # Cache buster to prevent the proxy from returning stale data
     cb = random.randint(10000, 99999)
     yahoo_url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}?range=2y&interval=1d&cb={cb}"
     
-    # We use a cascade of public proxy networks and a direct fallback
     proxies = [
         f"https://api.allorigins.win/raw?url={quote(yahoo_url)}",
         f"https://api.codetabs.com/v1/proxy?quest={quote(yahoo_url)}",
-        yahoo_url  # Try direct connection as an absolute last resort
+        yahoo_url
     ]
     
     headers = {
@@ -241,7 +239,8 @@ def fetch_single_stock_via_proxy(ticker):
 
     for proxy_url in proxies:
         try:
-            response = requests.get(proxy_url, headers=headers, timeout=8)
+            # Shorter timeout since we are running many at once
+            response = requests.get(proxy_url, headers=headers, timeout=5)
             
             if response.status_code == 200:
                 data = response.json()
@@ -252,7 +251,6 @@ def fetch_single_stock_via_proxy(ticker):
                     quote_data = result[0].get('indicators', {}).get('quote', [{}])[0]
                     
                     if timestamps and quote_data:
-                        # Reconstruct the OHLCV dataframe manually
                         df = pd.DataFrame({
                             'Date': pd.to_datetime(timestamps, unit='s').tz_localize(None),
                             'Open': quote_data.get('open', []),
@@ -266,44 +264,63 @@ def fetch_single_stock_via_proxy(ticker):
                         if len(df) > 100:
                             return df
         except Exception:
-            continue # If one proxy fails, seamlessly jump to the next
+            continue
 
     return pd.DataFrame()
+
+
+def fetch_and_calculate_worker(ticker):
+    """
+    Worker function to handle both fetching and math for a single stock.
+    """
+    df = fetch_single_stock_via_proxy(ticker)
+    if df.empty:
+        return ticker, None
+        
+    try:
+        df = df.set_index('Date')
+        calc_df = calculate_indicators(df)
+        calc_df['Ticker'] = ticker
+        calc_df = calc_df.reset_index()
+        return ticker, calc_df
+    except Exception:
+        return ticker, None
 
 
 def process_all_stocks(tickers_list):
     processed_dfs = []
     
-    st.write("### 👻 Live Ghost Fetch Log (Proxy Routed)")
+    st.write("### 👻 Live Ghost Fetch Log (Multi-Threaded)")
     progress_bar = st.progress(0)
-    log_container = st.empty()
+    status_text = st.empty()
 
-    for i, ticker in enumerate(tickers_list):
-        progress_bar.progress((i + 1) / len(tickers_list))
+    completed = 0
+    total = len(tickers_list)
+    
+    status_text.text(f"Spawning worker threads to fetch {total} stocks in parallel...")
+
+    # Launch 20 simultaneous threads to fetch data concurrently
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # Map the worker function to our list of tickers
+        future_to_ticker = {executor.submit(fetch_and_calculate_worker, ticker): ticker for ticker in tickers_list}
         
-        df = fetch_single_stock_via_proxy(ticker)
-        
-        if df.empty:
-            log_container.warning(f"⚠️ {ticker} failed (Proxy network timeout). Skipping.")
-            continue
+        # As each thread finishes, safely update the UI in the main thread
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            ticker, calc_df = future.result()
+            completed += 1
             
-        try:
-            df = df.set_index('Date')
-            calc_df = calculate_indicators(df)
-            calc_df['Ticker'] = ticker
-            calc_df = calc_df.reset_index()
-            processed_dfs.append(calc_df)
-            log_container.success(f"✅ Successfully processed {ticker}")
-        except Exception as e:
-            log_container.error(f"❌ Math failed for {ticker}: {str(e)}")
-
-        # Small delay so we don't accidentally DDOS the free proxy servers
-        time.sleep(0.3)
+            # Update visual progress
+            progress_bar.progress(completed / total)
+            status_text.text(f"Processed {completed}/{total} stocks... (Latest: {ticker})")
+            
+            if calc_df is not None:
+                processed_dfs.append(calc_df)
 
     progress_bar.empty()
-    log_container.empty()
-
+    status_text.empty()
+    
     if processed_dfs:
+        st.success(f"✅ Parallel fetch complete! Successfully calculated data for {len(processed_dfs)} stocks.")
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
@@ -313,7 +330,7 @@ def process_all_stocks(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating Ghost Fetcher. Routing requests through global public proxies to bypass Streamlit IP Bans...")
+    st.info("Initiating High-Speed Ghost Fetcher. Routing requests through 20 parallel proxy threads...")
     
     df_200 = process_all_stocks(NIFTY_200_TICKERS)
     
@@ -323,7 +340,6 @@ def load_all_market_data():
     df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
     
     return df_100, df_200
-
 # =====================================================================
 # 5. UI: EXPLICIT FETCH BUTTON
 # =====================================================================
