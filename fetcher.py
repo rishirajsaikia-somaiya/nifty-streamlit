@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from yahooquery import Ticker
+import time
 
 NIFTY_100_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS", 
@@ -193,62 +194,68 @@ def calculate_indicators(df):
 
 def run_fetcher():
     tickers = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
-    print(f"Initiating fetch for {len(tickers)} stocks via YahooQuery mobile API...")
-
-    # Fetch data specifically starting from January 1st, 2021
-    t = Ticker(tickers, asynchronous=True)
-    df = t.history(start="2021-01-01")
-
-    if df.empty or isinstance(df, dict):
-        print("CRITICAL: YahooQuery returned empty data.")
-        return
-
-    df = df.reset_index()
-    
-    # Drop rows where data failed to fetch
-    if 'error' in df.columns:
-        df = df[df['error'].isnull()]
-
-    df = df.rename(columns={
-        'symbol': 'Ticker',
-        'date': 'Date',
-        'open': 'Open',
-        'high': 'High',
-        'low': 'Low',
-        'close': 'Close',
-        'volume': 'Volume'
-    })
-
-    df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+    print(f"Initiating ISOLATED fetch for {len(tickers)} stocks via YahooQuery mobile API...")
 
     all_data = []
-    valid_tickers = df['Ticker'].unique()
-
-    for ticker in valid_tickers:
-        ticker_data = df[df['Ticker'] == ticker].copy()
-        
-        if len(ticker_data) >= 100:
-            ticker_data = ticker_data.set_index('Date')
-            try:
-                calc_df = calculate_indicators(ticker_data)
-                calc_df['Ticker'] = ticker
-                calc_df['Index'] = "Nifty 100" if ticker in NIFTY_100_TICKERS else "Nifty Midcap 100"
-                calc_df = calc_df.reset_index()
-                all_data.append(calc_df)
-            except Exception as e:
-                print(f"Skipping {ticker} due to calculation error: {e}")
+    
+    # Process stocks one by one to prevent API length-mismatch crashes
+    for ticker in tickers:
+        try:
+            # We initialize Ticker for a single stock at a time
+            t = Ticker(ticker)
+            df = t.history(start="2021-01-01")
+            
+            # Check if valid dataframe was returned
+            if isinstance(df, pd.DataFrame) and not df.empty and 'error' not in df.columns:
+                df = df.reset_index()
+                
+                # Standardize column names to Title Case
+                df = df.rename(columns={
+                    'symbol': 'Ticker',
+                    'date': 'Date',
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                })
+                
+                # Strip out timezone to avoid merge errors
+                df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+                
+                # Only process if we have enough data to calculate indicators
+                if len(df) > 100:
+                    df = df.set_index('Date')
+                    
+                    calc_df = calculate_indicators(df)
+                    calc_df['Ticker'] = ticker
+                    calc_df['Index'] = "Nifty 100" if ticker in NIFTY_100_TICKERS else "Nifty Midcap 100"
+                    
+                    calc_df = calc_df.reset_index()
+                    all_data.append(calc_df)
+                    print(f"✅ Processed {ticker}")
+                else:
+                    print(f"⚠️ Not enough data for {ticker}")
+            else:
+                print(f"⚠️ Yahoo returned invalid/empty data for {ticker}")
+                
+        except Exception as e:
+            print(f"❌ Failed to fetch/calculate {ticker}: {e}")
+            
+        # Small delay to keep the mobile API happy
+        time.sleep(0.5)
 
     if all_data:
         final_df = pd.concat(all_data)
         
-        # Round decimals to keep the file small, NO dropna() to avoid destroying data
+        # Round numerical values to save CSV space
         for col in final_df.select_dtypes(include=['float64']).columns:
             final_df[col] = final_df[col].round(2)
             
         final_df.to_csv("nifty_data.csv", index=False)
-        print(f"✅ Success! Saved {len(final_df)} rows of data to nifty_data.csv")
+        print(f"\n🎉 Success! Saved {len(final_df)} rows of data to nifty_data.csv")
     else:
-        print("❌ Failure: No valid data was processed.")
+        print("\n💥 CRITICAL FAILURE: No stocks were processed successfully.")
 
 if __name__ == "__main__":
     run_fetcher()
