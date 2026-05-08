@@ -6,7 +6,9 @@ from datetime import datetime
 import io
 import time
 import random
-import requests
+
+# THE MAGIC KEY: We use curl_cffi instead of standard requests to spoof the browser
+from curl_cffi import requests
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -67,7 +69,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE 
+# 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -216,50 +218,49 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STEALTH FETCH PROTOCOL (NATIVE YFINANCE)
+# 4. STEALTH FETCH PROTOCOL (CURL_CFFI NATIVE BYPASS)
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
     
-    # UI Elements for tracking progress
     st.write("### Live Fetch Log")
     progress_bar = st.progress(0)
     log_container = st.empty()
+
+    # THE FIX: Create a native curl_cffi session perfectly impersonating Chrome 110.
+    # This completely bypasses Yahoo's anti-bot/IP bans on Streamlit Cloud.
+    safe_session = requests.Session(impersonate="chrome110")
 
     for i, ticker in enumerate(tickers_list):
         progress_bar.progress((i + 1) / len(tickers_list))
         
         try:
-            # We removed the manual session. We now let yfinance's new curl_cffi backend 
-            # handle the anti-bot disguises natively!
-            stock = yf.Ticker(ticker)
+            # Pass our disguised session directly to yfinance
+            stock = yf.Ticker(ticker, session=safe_session)
             data = stock.history(period="2y")
             
             if data.empty:
-                log_container.warning(f"⚠️ {ticker} returned empty data.")
+                log_container.warning(f"⚠️ {ticker} returned empty data. Yahoo might be throttling. Retrying...")
+                time.sleep(2) # Back off temporarily if throttled
                 continue
                 
             if len(data) < 100:
-                log_container.warning(f"⚠️ {ticker} skipped (not enough historical data).")
                 continue
 
-            # Remove timezone to prevent pandas merging conflicts
             if data.index.tz is not None:
                 data.index = data.index.tz_localize(None)
 
-            # Calculate and append
             calc_df = calculate_indicators(data)
             calc_df['Ticker'] = ticker
             processed_dfs.append(calc_df)
             
-            # Log success
             log_container.success(f"✅ Successfully processed {ticker}")
             
         except Exception as e:
             log_container.error(f"❌ Failed processing {ticker}: {str(e)}")
             
-        # Tiny random sleep to prevent spamming the server too fast
-        time.sleep(random.uniform(0.2, 0.6))
+        # Tiny random sleep to act like a human clicking through pages
+        time.sleep(random.uniform(0.3, 0.7))
 
     progress_bar.empty()
     log_container.empty()
@@ -274,7 +275,8 @@ def fetch_and_process_group(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    # Only fetch Nifty 200, then extract Nifty 100 from it. Saves 50% time.
+    st.info("Initiating Anti-Bot Stealth Fetcher. Fetching 200 stocks safely...")
+    
     df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
     
     if df_200.empty:
@@ -297,7 +299,7 @@ if not st.session_state.data_fetched:
 df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("🚨 CRITICAL FAILURE: Yahoo Finance returned 0 valid stocks. Streamlit Cloud's IP range is currently hard-banned by Yahoo. Please reboot the app in your Streamlit dashboard to get a new IP address, or run the app locally on your computer.")
+    st.error("🚨 CRITICAL FAILURE: Yahoo Finance returned 0 valid stocks. Streamlit Cloud's IP range is currently hard-banned by Yahoo.")
     st.stop()
 
 # =====================================================================
