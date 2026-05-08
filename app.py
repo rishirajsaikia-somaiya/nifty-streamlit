@@ -6,7 +6,6 @@ from datetime import datetime
 import io
 import time
 import random
-import requests
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -63,6 +62,9 @@ NIFTY_MIDCAP_100_TICKERS = [
     "GODREJPROP.NS", "PHOENIXLTD.NS", "BRIGADE.NS", "NBCC.NS", "HUDCO.NS", 
     "JINDALSTEL.NS", "NATIONALUM.NS", "HINDCOPPER.NS"
 ]
+
+# THE MISSING VARIABLE
+NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
 # 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
@@ -214,7 +216,7 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STREAMLIT CLOUD "CHUNKING" DATA FETCHING
+# 4. CHUNKING FETCH (Avoids 429 Too Many Requests)
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
@@ -223,7 +225,6 @@ def fetch_and_process_group(tickers_list):
     progress_bar = st.progress(0)
     error_log = st.empty() 
     
-    # We will fetch the data in chunks of 20 stocks at a time
     chunk_size = 20
     total_chunks = (len(tickers_list) // chunk_size) + 1
     
@@ -235,7 +236,6 @@ def fetch_and_process_group(tickers_list):
         progress_bar.progress(current_chunk_num / total_chunks)
         
         try:
-            # Fetch 20 stocks at once. group_by='ticker' makes it easy to parse.
             data = yf.download(chunk, start="2021-01-01", group_by='ticker', progress=False, threads=False)
             
             if data.empty:
@@ -243,7 +243,6 @@ def fetch_and_process_group(tickers_list):
                 time.sleep(5)
                 continue
 
-            # Parse the chunked data
             if isinstance(data.columns, pd.MultiIndex):
                 valid_tickers = data.columns.get_level_values(0).unique()
                 for ticker in valid_tickers:
@@ -252,17 +251,15 @@ def fetch_and_process_group(tickers_list):
                     
                     if not ticker_df.empty and len(ticker_df) > 100:
                         try:
-                            # Clean timezones
                             if ticker_df.index.tz is not None:
                                 ticker_df.index = ticker_df.index.tz_localize(None)
                                 
                             calc_df = calculate_indicators(ticker_df)
                             calc_df['Ticker'] = ticker
                             processed_dfs.append(calc_df)
-                        except Exception as e:
-                            pass # Skip individual math failures without crashing
+                        except Exception:
+                            pass 
             else:
-                # Fallback if the chunk only had 1 valid stock and flattened the index
                 if not data.empty and len(data) > 100:
                     if data.index.tz is not None:
                         data.index = data.index.tz_localize(None)
@@ -273,7 +270,7 @@ def fetch_and_process_group(tickers_list):
         except Exception as e:
             error_log.error(f"❌ Batch {current_chunk_num} failed. Reason: {str(e)}")
             
-        # Breathe for 2 seconds between chunks to avoid Yahoo's 429 Rate Limit
+        # 2-second sleep ensures Yahoo doesn't rate-limit Streamlit's IP
         time.sleep(2)
 
     progress_text.empty()
@@ -282,7 +279,6 @@ def fetch_and_process_group(tickers_list):
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
-        # Final cleanup for any stray NaNs caused by the 52-day calculations
         final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
         
@@ -292,14 +288,13 @@ def fetch_and_process_group(tickers_list):
 def load_all_market_data():
     st.info("Initiating Chunked Fetch Protocol. Fetching stocks in batches of 20 to prevent rate-limiting...")
     
-    # We only need to fetch Nifty 200, because Nifty 100 is already inside Nifty 200!
-    # This prevents us from downloading the top 100 stocks twice.
+    # Fetch Nifty 200 (which automatically includes all Nifty 100 stocks)
     df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
     
     if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
         
-    # Split the Nifty 100 back out from the master Nifty 200 dataset
+    # Isolate Nifty 100 from the master df_200
     df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
     
     return df_100, df_200
@@ -308,16 +303,13 @@ def load_all_market_data():
 # 5. UI: EXPLICIT FETCH BUTTON
 # =====================================================================
 if not st.session_state.data_fetched:
-    st.info("👋 Welcome to the Nifty Technical Screener. Click the button below to pull the latest data.")
-    st.warning("⚠️ Note: Because Yahoo Finance blocks bulk requests, we are downloading the 200 stocks one by one to ensure stability. **This will take exactly 45 to 60 seconds.**")
-    
+    st.info("👋 Welcome to the Nifty Technical Screener.")
     if st.button("🚀 Fetch Live Market Data", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
 
-with st.spinner("Downloading and processing 33 technical indicators for 200 stocks... (Please wait ~60 seconds)"):
-    df_100, df_200 = load_all_market_data()
+df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
     st.error("Failed to fetch live data from Yahoo Finance. Please check your internet connection or try again in 15 minutes.")
