@@ -195,14 +195,17 @@ def run_fetcher():
     tickers = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
     print(f"Initiating fetch for {len(tickers)} stocks via YahooQuery mobile API...")
 
+    # Fetch data specifically starting from January 1st, 2021
     t = Ticker(tickers, asynchronous=True)
-    df = t.history(period="2y")
+    df = t.history(start="2021-01-01")
 
     if df.empty or isinstance(df, dict):
         print("CRITICAL: YahooQuery returned empty data.")
         return
 
     df = df.reset_index()
+    
+    # Drop rows where data failed to fetch
     if 'error' in df.columns:
         df = df[df['error'].isnull()]
 
@@ -223,6 +226,7 @@ def run_fetcher():
 
     for ticker in valid_tickers:
         ticker_data = df[df['Ticker'] == ticker].copy()
+        
         if len(ticker_data) >= 100:
             ticker_data = ticker_data.set_index('Date')
             try:
@@ -232,15 +236,19 @@ def run_fetcher():
                 calc_df = calc_df.reset_index()
                 all_data.append(calc_df)
             except Exception as e:
-                pass
+                print(f"Skipping {ticker} due to calculation error: {e}")
 
     if all_data:
         final_df = pd.concat(all_data)
-        final_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
+        
+        # Round decimals to keep the file small, NO dropna() to avoid destroying data
+        for col in final_df.select_dtypes(include=['float64']).columns:
+            final_df[col] = final_df[col].round(2)
+            
         final_df.to_csv("nifty_data.csv", index=False)
         print(f"✅ Success! Saved {len(final_df)} rows of data to nifty_data.csv")
     else:
-        print("❌ Failure: No stocks had enough data to calculate indicators.")
+        print("❌ Failure: No valid data was processed.")
 
 if __name__ == "__main__":
     run_fetcher()
