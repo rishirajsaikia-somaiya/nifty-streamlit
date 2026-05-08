@@ -4,10 +4,9 @@ numpy>=2.2.0
 streamlit>=1.45.0
 
 # Supporting libraries
-yfinance>=0.2.50
+tvdatafeed
 plotly>=5.24.1
 openpyxl>=3.1.5
 pandas-ta-openbb>=0.4.24
 requests>=2.32.3
 python-dateutil>=2.9.0
-curl_cffi
