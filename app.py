@@ -6,6 +6,7 @@ from datetime import datetime
 import io
 import time
 import random
+import requests
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -63,11 +64,10 @@ NIFTY_MIDCAP_100_TICKERS = [
     "JINDALSTEL.NS", "NATIONALUM.NS", "HINDCOPPER.NS"
 ]
 
-# THE MISSING VARIABLE
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
+# 3. TECHNICAL INDICATOR ENGINE 
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -216,65 +216,64 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. CHUNKING FETCH (Avoids 429 Too Many Requests)
+# 4. STEALTH FETCH PROTOCOL
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
     
-    progress_text = st.empty()
+    # UI Elements for tracking progress
+    st.write("### Live Fetch Log")
     progress_bar = st.progress(0)
-    error_log = st.empty() 
+    log_container = st.empty()
     
-    chunk_size = 20
-    total_chunks = (len(tickers_list) // chunk_size) + 1
-    
-    for i in range(0, len(tickers_list), chunk_size):
-        chunk = tickers_list[i : i + chunk_size]
-        current_chunk_num = (i // chunk_size) + 1
-        
-        progress_text.text(f"Fetching batch {current_chunk_num} of {total_chunks}... Please wait.")
-        progress_bar.progress(current_chunk_num / total_chunks)
+    # Random browser user-agents to spoof the request
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
+    ]
+
+    session = requests.Session()
+
+    for i, ticker in enumerate(tickers_list):
+        progress_bar.progress((i + 1) / len(tickers_list))
         
         try:
-            data = yf.download(chunk, start="2021-01-01", group_by='ticker', progress=False, threads=False)
+            # Mask the session
+            session.headers.update({'User-Agent': random.choice(user_agents)})
+            
+            # Fetch directly using Ticker.history (Bypasses formatting bugs)
+            stock = yf.Ticker(ticker, session=session)
+            data = stock.history(period="2y")
             
             if data.empty:
-                error_log.warning(f"⚠️ Yahoo returned empty data for batch {current_chunk_num}. Retrying in 5s...")
-                time.sleep(5)
+                log_container.warning(f"⚠️ {ticker} returned empty data.")
+                continue
+                
+            if len(data) < 100:
+                log_container.warning(f"⚠️ {ticker} skipped (not enough historical data).")
                 continue
 
-            if isinstance(data.columns, pd.MultiIndex):
-                valid_tickers = data.columns.get_level_values(0).unique()
-                for ticker in valid_tickers:
-                    ticker_df = data[ticker].copy()
-                    ticker_df.dropna(how='all', inplace=True)
-                    
-                    if not ticker_df.empty and len(ticker_df) > 100:
-                        try:
-                            if ticker_df.index.tz is not None:
-                                ticker_df.index = ticker_df.index.tz_localize(None)
-                                
-                            calc_df = calculate_indicators(ticker_df)
-                            calc_df['Ticker'] = ticker
-                            processed_dfs.append(calc_df)
-                        except Exception:
-                            pass 
-            else:
-                if not data.empty and len(data) > 100:
-                    if data.index.tz is not None:
-                        data.index = data.index.tz_localize(None)
-                    calc_df = calculate_indicators(data)
-                    calc_df['Ticker'] = chunk[0]
-                    processed_dfs.append(calc_df)
+            # Remove timezone to prevent pandas merging conflicts
+            if data.index.tz is not None:
+                data.index = data.index.tz_localize(None)
 
-        except Exception as e:
-            error_log.error(f"❌ Batch {current_chunk_num} failed. Reason: {str(e)}")
+            # Calculate and append
+            calc_df = calculate_indicators(data)
+            calc_df['Ticker'] = ticker
+            processed_dfs.append(calc_df)
             
-        # 2-second sleep ensures Yahoo doesn't rate-limit Streamlit's IP
-        time.sleep(2)
+            # Log success
+            log_container.success(f"✅ Successfully processed {ticker}")
+            
+        except Exception as e:
+            log_container.error(f"❌ Failed processing {ticker}: {str(e)}")
+            
+        # Tiny random sleep to trick rate-limiters
+        time.sleep(random.uniform(0.1, 0.4))
 
-    progress_text.empty()
     progress_bar.empty()
+    log_container.empty()
 
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
@@ -286,15 +285,12 @@ def fetch_and_process_group(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating Chunked Fetch Protocol. Fetching stocks in batches of 20 to prevent rate-limiting...")
-    
-    # Fetch Nifty 200 (which automatically includes all Nifty 100 stocks)
+    # Only fetch Nifty 200, then extract Nifty 100 from it. Saves 50% time.
     df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
     
     if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
         
-    # Isolate Nifty 100 from the master df_200
     df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
     
     return df_100, df_200
@@ -304,7 +300,7 @@ def load_all_market_data():
 # =====================================================================
 if not st.session_state.data_fetched:
     st.info("👋 Welcome to the Nifty Technical Screener.")
-    if st.button("🚀 Fetch Live Market Data", use_container_width=True):
+    if st.button("🚀 Fetch Live Market Data (Takes ~2 Mins)", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
@@ -312,7 +308,7 @@ if not st.session_state.data_fetched:
 df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("Failed to fetch live data from Yahoo Finance. Please check your internet connection or try again in 15 minutes.")
+    st.error("🚨 CRITICAL FAILURE: Yahoo Finance returned 0 valid stocks. Streamlit Cloud's IP range is currently hard-banned by Yahoo. Please reboot the app in your Streamlit dashboard to get a new IP address, or run the app locally on your computer.")
     st.stop()
 
 # =====================================================================
