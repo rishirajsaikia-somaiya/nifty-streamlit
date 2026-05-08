@@ -3,9 +3,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
-
-# THE BYPASS: We use yahooquery to hit mobile endpoints instead of the website
-from yahooquery import Ticker
+import requests
+from urllib.parse import quote
+import time
+import random
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -66,7 +67,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE
+# 3. TECHNICAL INDICATOR ENGINE 
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -215,85 +216,112 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. YAHOOQUERY HIGH-SPEED ASYNC BACKEND (Bypasses IP Blocks)
+# 4. GHOST FETCHER: BYPASSING THE CLOUD BAN VIA PUBLIC PROXIES
 # =========================================================================
-def fetch_all_data(tickers_list):
-    st.write("### Live Fetch Log (YahooQuery)")
+def fetch_single_stock_via_proxy(ticker):
+    """
+    Manually parses Yahoo's raw JSON endpoint, routed through free CORS proxies 
+    so Yahoo never sees the Streamlit Server's blacklisted IP address.
+    """
+    # Cache buster to prevent the proxy from returning stale data
+    cb = random.randint(10000, 99999)
+    yahoo_url = f"https://query2.finance.yahoo.com/v8/finance/chart/{ticker}?range=2y&interval=1d&cb={cb}"
+    
+    # We use a cascade of public proxy networks and a direct fallback
+    proxies = [
+        f"https://api.allorigins.win/raw?url={quote(yahoo_url)}",
+        f"https://api.codetabs.com/v1/proxy?quest={quote(yahoo_url)}",
+        yahoo_url  # Try direct connection as an absolute last resort
+    ]
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+    }
+
+    for proxy_url in proxies:
+        try:
+            response = requests.get(proxy_url, headers=headers, timeout=8)
+            
+            if response.status_code == 200:
+                data = response.json()
+                result = data.get('chart', {}).get('result', [])
+                
+                if result:
+                    timestamps = result[0].get('timestamp', [])
+                    quote_data = result[0].get('indicators', {}).get('quote', [{}])[0]
+                    
+                    if timestamps and quote_data:
+                        # Reconstruct the OHLCV dataframe manually
+                        df = pd.DataFrame({
+                            'Date': pd.to_datetime(timestamps, unit='s').tz_localize(None),
+                            'Open': quote_data.get('open', []),
+                            'High': quote_data.get('high', []),
+                            'Low': quote_data.get('low', []),
+                            'Close': quote_data.get('close', []),
+                            'Volume': quote_data.get('volume', [])
+                        })
+                        
+                        df.dropna(inplace=True)
+                        if len(df) > 100:
+                            return df
+        except Exception:
+            continue # If one proxy fails, seamlessly jump to the next
+
+    return pd.DataFrame()
+
+
+def process_all_stocks(tickers_list):
+    processed_dfs = []
+    
+    st.write("### 👻 Live Ghost Fetch Log (Proxy Routed)")
+    progress_bar = st.progress(0)
     log_container = st.empty()
-    log_container.info("🚀 Initiating high-speed asynchronous fetch via Mobile APIs...")
 
-    try:
-        # asynchronous=True handles all the requests simultaneously and safely
-        t = Ticker(tickers_list, asynchronous=True)
-        df = t.history(period='2y')
+    for i, ticker in enumerate(tickers_list):
+        progress_bar.progress((i + 1) / len(tickers_list))
         
-        if df.empty or isinstance(df, dict):
-            log_container.error("❌ Failed to pull market data.")
-            return pd.DataFrame()
-            
-        df = df.reset_index()
+        df = fetch_single_stock_via_proxy(ticker)
         
-        # Drop rows where data failed to fetch (yq puts a string in 'error' column if it fails)
-        if 'error' in df.columns:
-            df = df[df['error'].isnull()]
+        if df.empty:
+            log_container.warning(f"⚠️ {ticker} failed (Proxy network timeout). Skipping.")
+            continue
             
-        # Rename columns to our required Title Case
-        df = df.rename(columns={
-            'symbol': 'Ticker',
-            'date': 'Date',
-            'open': 'Open',
-            'high': 'High',
-            'low': 'Low',
-            'close': 'Close',
-            'volume': 'Volume'
-        })
+        try:
+            df = df.set_index('Date')
+            calc_df = calculate_indicators(df)
+            calc_df['Ticker'] = ticker
+            calc_df = calc_df.reset_index()
+            processed_dfs.append(calc_df)
+            log_container.success(f"✅ Successfully processed {ticker}")
+        except Exception as e:
+            log_container.error(f"❌ Math failed for {ticker}: {str(e)}")
+
+        # Small delay so we don't accidentally DDOS the free proxy servers
+        time.sleep(0.3)
+
+    progress_bar.empty()
+    log_container.empty()
+
+    if processed_dfs:
+        final_combined_df = pd.concat(processed_dfs)
+        final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
+        return final_combined_df
         
-        # Format the date safely
-        df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
+    return pd.DataFrame()
 
-        processed_dfs = []
-        valid_tickers = df['Ticker'].unique()
-        
-        log_container.info("🧮 Calculating 33 indicators for the market...")
-        progress_bar = st.progress(0)
-
-        for i, ticker in enumerate(valid_tickers):
-            progress_bar.progress((i + 1) / len(valid_tickers))
-            
-            ticker_data = df[df['Ticker'] == ticker].copy()
-            
-            if len(ticker_data) >= 100:
-                ticker_data = ticker_data.set_index('Date')
-                try:
-                    calc_df = calculate_indicators(ticker_data)
-                    calc_df['Ticker'] = ticker
-                    calc_df = calc_df.reset_index() 
-                    processed_dfs.append(calc_df)
-                except Exception:
-                    pass
-
-        progress_bar.empty()
-        log_container.success("✅ Data fetch and calculations complete!")
-
-        if processed_dfs:
-            final_combined_df = pd.concat(processed_dfs)
-            final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
-            return final_combined_df
-            
-        return pd.DataFrame()
-
-    except Exception as e:
-        log_container.error(f"❌ Execution Error: {str(e)}")
-        return pd.DataFrame()
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    df_200 = fetch_all_data(NIFTY_200_TICKERS)
+    st.info("Initiating Ghost Fetcher. Routing requests through global public proxies to bypass Streamlit IP Bans...")
+    
+    df_200 = process_all_stocks(NIFTY_200_TICKERS)
     
     if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
         
     df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
+    
     return df_100, df_200
 
 # =====================================================================
@@ -301,7 +329,7 @@ def load_all_market_data():
 # =====================================================================
 if not st.session_state.data_fetched:
     st.info("👋 Welcome to the Nifty Technical Screener.")
-    if st.button("🚀 Fetch Live Market Data", use_container_width=True):
+    if st.button("🚀 Fetch Live Market Data (Takes ~2 Mins)", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
@@ -309,7 +337,7 @@ if not st.session_state.data_fetched:
 df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("🚨 CRITICAL FAILURE: API returned empty data.")
+    st.error("🚨 CRITICAL FAILURE: The proxy network failed to bypass the firewall.")
     st.stop()
 
 # =====================================================================
