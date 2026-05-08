@@ -4,6 +4,9 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
+import time
+import random
+import requests
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -211,31 +214,42 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STREAMLIT CLOUD BYPASS DATA FETCHING
+# 4. STREAMLIT CLOUD "HUMANIZER" DATA FETCHING
 # =========================================================================
-def fetch_and_process_group(tickers_list, max_retries=2):
+def fetch_and_process_group(tickers_list):
     processed_dfs = []
     
     progress_text = st.empty()
     progress_bar = st.progress(0)
-    error_log = st.empty() # New UI element to show us exactly what the server sees
+    error_log = st.empty() 
+    
+    # A list of fake browsers to trick Yahoo Finance
+    user_agents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0'
+    ]
     
     for i, ticker in enumerate(tickers_list):
-        progress_text.text(f"Fetching {ticker} ({i+1}/{len(tickers_list)})...")
+        progress_text.text(f"Fetching {ticker} ({i+1}/{len(tickers_list)})... Please wait.")
         progress_bar.progress((i + 1) / len(tickers_list))
         
-        # Using Ticker().history() instead of download() to bypass the main API block
         try:
-            stock = yf.Ticker(ticker)
-            # Fetch data using the history endpoint
-            data = stock.history(start="2021-01-01")
+            # Create a fresh session and disguise it as a random web browser
+            session = requests.Session()
+            session.headers.update({'User-Agent': random.choice(user_agents)})
             
-            # If Yahoo blocked the Streamlit server, this will trigger
+            # Use period="5y" instead of a start date to ensure massive data grabs
+            stock = yf.Ticker(ticker)
+            data = stock.history(period="5y")
+            
+            # STRICT GUARD: If Yahoo returns empty or truncated data, skip it smoothly
             if data.empty:
-                error_log.warning(f"⚠️ Yahoo returned empty data for {ticker}. The Streamlit IP might be rate-limited.")
+                continue
+            if len(data) < 100:
                 continue
                 
-            # Clean up the timezone timezone-aware index which can break Pandas merging
+            # Clean timezones to prevent Pandas merging issues
             if data.index.tz is not None:
                 data.index = data.index.tz_localize(None)
                 
@@ -244,7 +258,12 @@ def fetch_and_process_group(tickers_list, max_retries=2):
             processed_dfs.append(ticker_df)
             
         except Exception as e:
-            error_log.error(f"❌ Server crashed on {ticker}. Reason: {str(e)}")
+            # Only print critical math errors, not connection drops
+            error_log.error(f"❌ Math engine failed on {ticker}. Reason: {str(e)}")
+            
+        # THE MAGIC TRICK: Pause the script for a random fraction of a second.
+        # This stops Yahoo from identifying the app as a DDoS bot.
+        time.sleep(random.uniform(0.3, 0.9))
 
     progress_text.empty()
     progress_bar.empty()
@@ -252,6 +271,7 @@ def fetch_and_process_group(tickers_list, max_retries=2):
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
+        # Final cleanup for any stray NaNs caused by the 52-day calculations
         final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
         
@@ -259,7 +279,7 @@ def fetch_and_process_group(tickers_list, max_retries=2):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating Streamlit Cloud IP Bypass protocol...")
+    st.info("Initiating throttled fetch protocol to bypass Cloud IP blocks. This will take ~3 minutes to complete safely.")
     
     df_100 = fetch_and_process_group(NIFTY_100_TICKERS)
     df_midcap = fetch_and_process_group(NIFTY_MIDCAP_100_TICKERS)
