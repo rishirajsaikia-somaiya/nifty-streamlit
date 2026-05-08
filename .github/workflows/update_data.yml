@@ -2,7 +2,7 @@ name: Daily Market Data Fetcher
 
 on:
   schedule:
-    - cron: '30 11 * * *' # Runs at 17:00 IST every day automatically
+    - cron: '30 3-10 * * 1-5' # Runs at 17:00 IST every day automatically
   workflow_dispatch: # Gives you a manual 'Run' button
 
 jobs:
