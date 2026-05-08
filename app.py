@@ -1,5 +1,4 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -7,8 +6,8 @@ import io
 import time
 import random
 
-# THE MAGIC KEY: We use curl_cffi instead of standard requests to spoof the browser
-from curl_cffi import requests
+# THE PIVOT: Bypassing Yahoo entirely and using TradingView
+from tvDatafeed import TvDatafeed, Interval
 
 # =========================================================================
 # 1. PAGE CONFIGURATION & SESSION STATE
@@ -22,6 +21,8 @@ if 'data_fetched' not in st.session_state:
 # =========================================================================
 # 2. TICKER LISTS
 # =========================================================================
+# (Note: TradingView doesn't use the '.NS' suffix, but we keep it here 
+#  so your UI looks the same. The engine strips it out automatically.)
 NIFTY_100_TICKERS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "ICICIBANK.NS", "BHARTIARTL.NS", 
     "SBIN.NS", "INFY.NS", "LT.NS", "ITC.NS", "HINDUNILVR.NS", "AXISBANK.NS", 
@@ -69,7 +70,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
+# 3. TECHNICAL INDICATOR ENGINE (Untouched Math)
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -218,40 +219,47 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STEALTH FETCH PROTOCOL (CURL_CFFI NATIVE BYPASS)
+# 4. TRADINGVIEW FETCH PROTOCOL
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
     
-    st.write("### Live Fetch Log")
+    st.write("### Live Fetch Log (TradingView Backend)")
     progress_bar = st.progress(0)
     log_container = st.empty()
 
-    # THE FIX: Create a native curl_cffi session perfectly impersonating Chrome 110.
-    # This completely bypasses Yahoo's anti-bot/IP bans on Streamlit Cloud.
-    safe_session = requests.Session(impersonate="chrome110")
+    # Initialize TradingView as an anonymous guest
+    tv = TvDatafeed()
 
     for i, ticker in enumerate(tickers_list):
         progress_bar.progress((i + 1) / len(tickers_list))
         
         try:
-            # Pass our disguised session directly to yfinance
-            stock = yf.Ticker(ticker, session=safe_session)
-            data = stock.history(period="2y")
+            # TradingView doesn't use the ".NS" suffix for Indian stocks, so we strip it out
+            clean_ticker = ticker.replace('.NS', '')
             
-            if data.empty:
-                log_container.warning(f"⚠️ {ticker} returned empty data. Yahoo might be throttling. Retrying...")
-                time.sleep(2) # Back off temporarily if throttled
+            # Fetch ~2.5 years of daily data from the NSE exchange
+            data = tv.get_hist(symbol=clean_ticker, exchange='NSE', interval=Interval.in_daily, n_bars=600)
+            
+            if data is None or data.empty:
+                log_container.warning(f"⚠️ {ticker} returned empty data from TradingView.")
                 continue
                 
             if len(data) < 100:
                 continue
 
+            # TV returns lowercase columns. We capitalize them so our math engine recognizes them!
+            data = data.rename(columns={'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'})
+            
+            # TV returns the index as 'datetime'. We rename it to 'Date'
+            data.index.name = 'Date'
+            
+            # Strip timezones
             if data.index.tz is not None:
                 data.index = data.index.tz_localize(None)
 
             calc_df = calculate_indicators(data)
-            calc_df['Ticker'] = ticker
+            calc_df['Ticker'] = ticker  # Put the .NS back so your UI matches exactly what you had
             processed_dfs.append(calc_df)
             
             log_container.success(f"✅ Successfully processed {ticker}")
@@ -259,15 +267,13 @@ def fetch_and_process_group(tickers_list):
         except Exception as e:
             log_container.error(f"❌ Failed processing {ticker}: {str(e)}")
             
-        # Tiny random sleep to act like a human clicking through pages
-        time.sleep(random.uniform(0.3, 0.7))
+        time.sleep(0.2) # Small breather for TV servers
 
     progress_bar.empty()
     log_container.empty()
 
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
-        final_combined_df.index.name = 'Date'
         final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
         
@@ -275,7 +281,7 @@ def fetch_and_process_group(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating Anti-Bot Stealth Fetcher. Fetching 200 stocks safely...")
+    st.info("Initiating TradingView Fetcher. Bypassing Yahoo Finance completely...")
     
     df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
     
@@ -291,7 +297,7 @@ def load_all_market_data():
 # =====================================================================
 if not st.session_state.data_fetched:
     st.info("👋 Welcome to the Nifty Technical Screener.")
-    if st.button("🚀 Fetch Live Market Data (Takes ~2 Mins)", use_container_width=True):
+    if st.button("🚀 Fetch Live Data from TradingView (Takes ~1 Min)", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
@@ -299,7 +305,7 @@ if not st.session_state.data_fetched:
 df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("🚨 CRITICAL FAILURE: Yahoo Finance returned 0 valid stocks. Streamlit Cloud's IP range is currently hard-banned by Yahoo.")
+    st.error("🚨 CRITICAL FAILURE: Both Yahoo and TradingView APIs failed to return data.")
     st.stop()
 
 # =====================================================================
