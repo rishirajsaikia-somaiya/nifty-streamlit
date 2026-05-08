@@ -1,21 +1,5 @@
-# Build tools required for Python 3.12+
-setuptools
-wheel
-
-# Core Data Stack
 pandas
 numpy
 streamlit
-
-# Technical Analysis & Charts
-plotly
 openpyxl
-pandas-ta-openbb
-
-# Utilities
-requests
-python-dateutil
-websocket-client
-
-# Direct Zip Installation for tvdatafeed (Bypasses Git errors)
-https://github.com/rongardF/tvdatafeed/archive/refs/heads/main.zip
+yahooquery
