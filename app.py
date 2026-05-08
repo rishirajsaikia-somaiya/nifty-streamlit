@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import io
+
+# THE BYPASS: We use yahooquery to hit mobile endpoints instead of the website
 from yahooquery import Ticker
 
 # =========================================================================
@@ -64,7 +66,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE 
+# 3. TECHNICAL INDICATOR ENGINE
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -216,13 +218,12 @@ def calculate_indicators(df):
 # 4. YAHOOQUERY HIGH-SPEED ASYNC BACKEND (Bypasses IP Blocks)
 # =========================================================================
 def fetch_all_data(tickers_list):
-    st.write("### Live Fetch Log")
+    st.write("### Live Fetch Log (YahooQuery)")
     log_container = st.empty()
-    
     log_container.info("🚀 Initiating high-speed asynchronous fetch via Mobile APIs...")
 
     try:
-        # asynchronous=True handles all the messy request batching automatically
+        # asynchronous=True handles all the requests simultaneously and safely
         t = Ticker(tickers_list, asynchronous=True)
         df = t.history(period='2y')
         
@@ -230,14 +231,13 @@ def fetch_all_data(tickers_list):
             log_container.error("❌ Failed to pull market data.")
             return pd.DataFrame()
             
-        # Format the output to match our math engine
         df = df.reset_index()
         
-        # Drop rows where data failed to fetch (yq puts a string in 'error' column)
+        # Drop rows where data failed to fetch (yq puts a string in 'error' column if it fails)
         if 'error' in df.columns:
             df = df[df['error'].isnull()]
             
-        # Rename the lowercase columns to our required Title Case
+        # Rename columns to our required Title Case
         df = df.rename(columns={
             'symbol': 'Ticker',
             'date': 'Date',
@@ -248,7 +248,7 @@ def fetch_all_data(tickers_list):
             'volume': 'Volume'
         })
         
-        # Ensure 'Date' handles timezones safely
+        # Format the date safely
         df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
 
         processed_dfs = []
@@ -262,13 +262,12 @@ def fetch_all_data(tickers_list):
             
             ticker_data = df[df['Ticker'] == ticker].copy()
             
-            # Require at least 100 days of history so our 52-day math doesn't crash
             if len(ticker_data) >= 100:
                 ticker_data = ticker_data.set_index('Date')
                 try:
                     calc_df = calculate_indicators(ticker_data)
                     calc_df['Ticker'] = ticker
-                    calc_df = calc_df.reset_index() # Bring Date back out of the index
+                    calc_df = calc_df.reset_index() 
                     processed_dfs.append(calc_df)
                 except Exception:
                     pass
@@ -289,14 +288,12 @@ def fetch_all_data(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    # Only fetch Nifty 200, then extract Nifty 100 from it.
     df_200 = fetch_all_data(NIFTY_200_TICKERS)
     
     if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
         
     df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
-    
     return df_100, df_200
 
 # =====================================================================
@@ -321,7 +318,6 @@ if df_100.empty or df_200.empty:
 selected_index = st.radio("Select Index to Screen", ["Nifty 100", "Nifty 200"], horizontal=True)
 df = df_100 if selected_index == "Nifty 100" else df_200
 
-# Safety reset just in case there's an overlapping index
 df = df.reset_index(drop=True)
 df['Date'] = pd.to_datetime(df['Date']).dt.date
 
