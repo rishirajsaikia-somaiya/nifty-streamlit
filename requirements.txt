@@ -1,12 +1,16 @@
-# Core libraries - loosened to find pre-built wheels
+# Core Data Stack
 pandas>=3.0.0
 numpy>=2.2.0
 streamlit>=1.45.0
 
-# Supporting libraries
-tvdatafeed
+# Technical Analysis & Charts
 plotly>=5.24.1
 openpyxl>=3.1.5
 pandas-ta-openbb>=0.4.24
+
+# Utilities
 requests>=2.32.3
 python-dateutil>=2.9.0
+
+# The Fix: Direct GitHub link for tvdatafeed
+git+https://github.com/rish-97/tvdatafeed.git
