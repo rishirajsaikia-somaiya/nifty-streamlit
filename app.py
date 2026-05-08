@@ -64,7 +64,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
 
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
+# 3. TECHNICAL INDICATOR ENGINE (Updated with Math Safeties)
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
@@ -84,28 +84,28 @@ def calculate_indicators(df):
     # Stochastics
     lowest_low = df['Low'].rolling(window=14).min()
     highest_high = df['High'].rolling(window=14).max()
-    df['Stoch_%K'] = ((df['Close'] - lowest_low) / (highest_high - lowest_low)) * 100
+    df['Stoch_%K'] = ((df['Close'] - lowest_low) / (highest_high - lowest_low).replace(0, 1e-9)) * 100
     df['Stoch_%D'] = df['Stoch_%K'].rolling(window=3).mean()
 
     # CCI
     tp = (df['High'] + df['Low'] + df['Close']) / 3
     sma_tp = tp.rolling(window=20).mean()
     mad = tp.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
-    df['CCI_20'] = (tp - sma_tp) / (0.015 * mad)
+    df['CCI_20'] = (tp - sma_tp) / (0.015 * mad.replace(0, 1e-9))
 
     # RSI
     delta = df['Close'].diff()
     gain = delta.where(delta > 0, 0.0).ewm(alpha=1/14, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/14, adjust=False).mean()
-    rs = gain / loss
+    rs = gain / loss.replace(0, 1e-9)
     df['RSI_14'] = 100 - (100 / (1 + rs))
 
     # MFI & Williams %R
     raw_money_flow = tp * df['Volume']
     pos_flow = raw_money_flow.where(tp.diff() > 0, 0.0).rolling(14).sum()
     neg_flow = raw_money_flow.where(tp.diff() < 0, 0.0).rolling(14).sum()
-    df['MFI_14'] = 100 - (100 / (1 + (pos_flow / neg_flow)))
-    df['Williams_%R'] = ((highest_high - df['Close']) / (highest_high - lowest_low)) * -100
+    df['MFI_14'] = 100 - (100 / (1 + (pos_flow / neg_flow.replace(0, 1e-9))))
+    df['Williams_%R'] = ((highest_high - df['Close']) / (highest_high - lowest_low).replace(0, 1e-9)) * -100
 
     # Ichimoku & Bollinger Bands
     df['Ichimoku_Tenkan'] = (df['High'].rolling(9).max() + df['Low'].rolling(9).min()) / 2
@@ -126,9 +126,9 @@ def calculate_indicators(df):
     # OBV, MVWAP, ROC, Hist Volatility
     obv = np.where(df['Close'] > df['Close'].shift(1), df['Volume'], np.where(df['Close'] < df['Close'].shift(1), -df['Volume'], 0))
     df['OBV'] = pd.Series(obv, index=df.index).cumsum()
-    df['MVWAP_20'] = (tp * df['Volume']).rolling(20).sum() / df['Volume'].rolling(20).sum()
-    df['ROC_14'] = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14)) * 100
-    df['Hist_Volatility_20'] = np.log(df['Close'] / df['Close'].shift(1)).rolling(20).std() * np.sqrt(252) * 100
+    df['MVWAP_20'] = (tp * df['Volume']).rolling(20).sum() / df['Volume'].rolling(20).sum().replace(0, 1e-9)
+    df['ROC_14'] = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
+    df['Hist_Volatility_20'] = np.log(df['Close'] / df['Close'].shift(1).replace(0, np.nan)).rolling(20).std() * np.sqrt(252) * 100
 
     # =====================================================================
     # --- 15 NEW INDICATORS ---
@@ -139,9 +139,9 @@ def calculate_indicators(df):
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
     atr_smooth = df['ATR_14'].ewm(alpha=1/14, adjust=False).mean()
-    plus_di = 100 * (pd.Series(plus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth)
-    minus_di = 100 * (pd.Series(minus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth)
-    dx = (np.abs(plus_di - minus_di) / np.abs(plus_di + minus_di)) * 100
+    plus_di = 100 * (pd.Series(plus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
+    minus_di = 100 * (pd.Series(minus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
+    dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, 1e-9)) * 100
     df['ADX_14'] = dx.ewm(alpha=1/14, adjust=False).mean()
 
     # 2. Aroon Oscillator (14)
@@ -154,15 +154,15 @@ def calculate_indicators(df):
     df['Awesome_Osc'] = hl2.rolling(5).mean() - hl2.rolling(34).mean()
 
     # 4. Chaikin Money Flow (CMF 20)
-    mfv = df['Volume'] * ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'])
-    df['CMF_20'] = mfv.rolling(20).sum() / df['Volume'].rolling(20).sum()
+    mfv = df['Volume'] * ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
+    df['CMF_20'] = mfv.rolling(20).sum() / df['Volume'].rolling(20).sum().replace(0, 1e-9)
 
     # 5. Chande Momentum Oscillator (CMO 14)
-    df['CMO_14'] = 100 * ((gain * 14) - (loss * 14)) / ((gain * 14) + (loss * 14))
+    df['CMO_14'] = 100 * ((gain * 14) - (loss * 14)) / ((gain * 14) + (loss * 14)).replace(0, 1e-9)
 
     # 6. Coppock Curve
-    roc_14 = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14)) * 100
-    roc_11 = ((df['Close'] - df['Close'].shift(11)) / df['Close'].shift(11)) * 100
+    roc_14 = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
+    roc_11 = ((df['Close'] - df['Close'].shift(11)) / df['Close'].shift(11).replace(0, 1e-9)) * 100
     df['Coppock'] = (roc_14 + roc_11).ewm(span=10, adjust=False).mean()
 
     # 7. Keltner Channels
@@ -172,39 +172,39 @@ def calculate_indicators(df):
     # 8. Mass Index (25)
     high_low_ema = (df['High'] - df['Low']).ewm(span=9, adjust=False).mean()
     high_low_dema = high_low_ema.ewm(span=9, adjust=False).mean()
-    df['Mass_Index'] = (high_low_ema / high_low_dema).rolling(25).sum()
+    df['Mass_Index'] = (high_low_ema / high_low_dema.replace(0, 1e-9)).rolling(25).sum()
 
     # 9. Percentage Price Oscillator (PPO)
-    df['PPO'] = ((ema_12 - ema_26) / ema_26) * 100
+    df['PPO'] = ((ema_12 - ema_26) / ema_26.replace(0, 1e-9)) * 100
 
     # 10. Stochastic RSI
     rsi_min = df['RSI_14'].rolling(14).min()
     rsi_max = df['RSI_14'].rolling(14).max()
-    df['Stoch_RSI'] = (df['RSI_14'] - rsi_min) / (rsi_max - rsi_min)
+    df['Stoch_RSI'] = (df['RSI_14'] - rsi_min) / (rsi_max - rsi_min).replace(0, 1e-9)
 
     # 11. TRIX (15)
     ema_1 = df['Close'].ewm(span=15, adjust=False).mean()
     ema_2 = ema_1.ewm(span=15, adjust=False).mean()
     ema_3 = ema_2.ewm(span=15, adjust=False).mean()
-    df['TRIX'] = ((ema_3 - ema_3.shift(1)) / ema_3.shift(1)) * 100
+    df['TRIX'] = ((ema_3 - ema_3.shift(1)) / ema_3.shift(1).replace(0, 1e-9)) * 100
 
     # 12. Ultimate Oscillator
     bp = df['Close'] - pd.concat([df['Low'], df['Close'].shift()], axis=1).min(axis=1)
-    avg7 = bp.rolling(7).sum() / tr.rolling(7).sum()
-    avg14 = bp.rolling(14).sum() / tr.rolling(14).sum()
-    avg28 = bp.rolling(28).sum() / tr.rolling(28).sum()
+    avg7 = bp.rolling(7).sum() / tr.rolling(7).sum().replace(0, 1e-9)
+    avg14 = bp.rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
+    avg28 = bp.rolling(28).sum() / tr.rolling(28).sum().replace(0, 1e-9)
     df['Ultimate_Osc'] = 100 * ((4 * avg7) + (2 * avg14) + avg28) / 7
 
     # 13. Volume Oscillator
     vol_sma_14 = df['Volume'].rolling(14).mean()
     vol_sma_28 = df['Volume'].rolling(28).mean()
-    df['Volume_Osc'] = ((vol_sma_14 - vol_sma_28) / vol_sma_28) * 100
+    df['Volume_Osc'] = ((vol_sma_14 - vol_sma_28) / vol_sma_28.replace(0, 1e-9)) * 100
 
     # 14. Vortex Index
     vmp = np.abs(df['High'] - df['Low'].shift())
     vmm = np.abs(df['Low'] - df['High'].shift())
-    df['Vortex_Pos'] = pd.Series(vmp).rolling(14).sum() / tr.rolling(14).sum()
-    df['Vortex_Neg'] = pd.Series(vmm).rolling(14).sum() / tr.rolling(14).sum()
+    df['Vortex_Pos'] = pd.Series(vmp).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
+    df['Vortex_Neg'] = pd.Series(vmm).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
 
     # 15. Force Index
     df['Force_Index'] = (df['Close'] - df['Close'].shift(1)) * df['Volume']
@@ -241,15 +241,21 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. LIVE DATA FETCHING
+# 4. LIVE DATA FETCHING & CACHING (In-Memory)
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     if not tickers_list:
         return pd.DataFrame()
         
+    print(f"Fetching data for {len(tickers_list)} tickers...")
     data = yf.download(tickers_list, start="2021-01-01", group_by='ticker', progress=False)
     processed_dfs = []
     
+    # Check if data was actually returned
+    if data.empty:
+        print("Yahoo Finance returned an empty dataframe. They might be temporarily rate-limiting you.")
+        return pd.DataFrame()
+
     if isinstance(data.columns, pd.MultiIndex):
         valid_tickers = data.columns.get_level_values(0).unique()
         for ticker in valid_tickers:
@@ -260,21 +266,25 @@ def fetch_and_process_group(tickers_list):
                     ticker_df = calculate_indicators(ticker_df)
                     ticker_df['Ticker'] = ticker
                     processed_dfs.append(ticker_df)
-                except Exception:
-                    pass
+                except Exception as e:
+                    # WE NO LONGER SILENTLY PASS. THIS WILL PRINT THE EXACT ERROR.
+                    print(f"Error calculating indicators for {ticker}: {e}")
     else:
         if not data.empty:
-            df = calculate_indicators(data)
-            df['Ticker'] = tickers_list[0]
-            processed_dfs.append(df)
+            try:
+                df = calculate_indicators(data)
+                df['Ticker'] = tickers_list[0]
+                processed_dfs.append(df)
+            except Exception as e:
+                print(f"Error calculating indicators for single ticker: {e}")
 
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
-        # Drop early rows that have NaN values from long moving averages
-        final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
+        # Removed the aggressive dropna() here that was wiping out data sets
         return final_combined_df
     else:
+        print("All DataFrames failed processing.")
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -282,7 +292,6 @@ def load_all_market_data():
     n100 = fetch_and_process_group(NIFTY_100_TICKERS)
     n200 = fetch_and_process_group(NIFTY_200_TICKERS)
     return n100, n200
-
 # =====================================================================
 # 5. UI: EXPLICIT FETCH BUTTON
 # =====================================================================
