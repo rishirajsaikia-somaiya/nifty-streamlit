@@ -8,24 +8,28 @@ import os
 # =========================================================================
 st.set_page_config(page_title="Live Nifty Screener", layout="wide")
 st.title("📈 Nifty Technical Screener")
-st.info("🔄 Market Data is fetched safely via GitHub Actions to bypass IP bans. The dashboard loads instantly.")
 
 # =========================================================================
-# 2. DATA LOADING (INSTANT)
+# 2. DATA LOADING (REAL-TIME READ)
 # =========================================================================
-@st.cache_data(ttl=3600)
+# Removed all caching. It will now read the file fresh every single time the page loads.
 def load_data():
-    if not os.path.exists("nifty_data.csv"):
+    file_path = "nifty_data.csv"
+    
+    if not os.path.exists(file_path):
         return pd.DataFrame()
         
-    df = pd.read_csv("nifty_data.csv")
-    df['Date'] = pd.to_datetime(df['Date']).dt.date
-    return df
+    try:
+        df = pd.read_csv(file_path)
+        df['Date'] = pd.to_datetime(df['Date']).dt.date
+        return df
+    except Exception:
+        return pd.DataFrame()
 
 df = load_data()
 
 if df.empty:
-    st.warning("⏳ Data is currently being fetched by GitHub Actions. Please wait ~3 minutes and refresh the page.")
+    st.warning("⏳ Data file not found. Please ensure the GitHub Action has successfully run and saved 'nifty_data.csv' to your repository.")
     st.stop()
 
 # =====================================================================
