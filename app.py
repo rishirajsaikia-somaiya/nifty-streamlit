@@ -216,7 +216,7 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STEALTH FETCH PROTOCOL
+# 4. STEALTH FETCH PROTOCOL (NATIVE YFINANCE)
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
@@ -225,25 +225,14 @@ def fetch_and_process_group(tickers_list):
     st.write("### Live Fetch Log")
     progress_bar = st.progress(0)
     log_container = st.empty()
-    
-    # Random browser user-agents to spoof the request
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15',
-        'Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0'
-    ]
-
-    session = requests.Session()
 
     for i, ticker in enumerate(tickers_list):
         progress_bar.progress((i + 1) / len(tickers_list))
         
         try:
-            # Mask the session
-            session.headers.update({'User-Agent': random.choice(user_agents)})
-            
-            # Fetch directly using Ticker.history (Bypasses formatting bugs)
-            stock = yf.Ticker(ticker, session=session)
+            # We removed the manual session. We now let yfinance's new curl_cffi backend 
+            # handle the anti-bot disguises natively!
+            stock = yf.Ticker(ticker)
             data = stock.history(period="2y")
             
             if data.empty:
@@ -269,8 +258,8 @@ def fetch_and_process_group(tickers_list):
         except Exception as e:
             log_container.error(f"❌ Failed processing {ticker}: {str(e)}")
             
-        # Tiny random sleep to trick rate-limiters
-        time.sleep(random.uniform(0.1, 0.4))
+        # Tiny random sleep to prevent spamming the server too fast
+        time.sleep(random.uniform(0.2, 0.6))
 
     progress_bar.empty()
     log_container.empty()
