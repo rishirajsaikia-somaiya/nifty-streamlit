@@ -214,7 +214,7 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. STREAMLIT CLOUD "HUMANIZER" DATA FETCHING
+# 4. STREAMLIT CLOUD "CHUNKING" DATA FETCHING
 # =========================================================================
 def fetch_and_process_group(tickers_list):
     processed_dfs = []
@@ -223,47 +223,58 @@ def fetch_and_process_group(tickers_list):
     progress_bar = st.progress(0)
     error_log = st.empty() 
     
-    # A list of fake browsers to trick Yahoo Finance
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.5 Safari/605.1.15',
-        'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0'
-    ]
+    # We will fetch the data in chunks of 20 stocks at a time
+    chunk_size = 20
+    total_chunks = (len(tickers_list) // chunk_size) + 1
     
-    for i, ticker in enumerate(tickers_list):
-        progress_text.text(f"Fetching {ticker} ({i+1}/{len(tickers_list)})... Please wait.")
-        progress_bar.progress((i + 1) / len(tickers_list))
+    for i in range(0, len(tickers_list), chunk_size):
+        chunk = tickers_list[i : i + chunk_size]
+        current_chunk_num = (i // chunk_size) + 1
+        
+        progress_text.text(f"Fetching batch {current_chunk_num} of {total_chunks}... Please wait.")
+        progress_bar.progress(current_chunk_num / total_chunks)
         
         try:
-            # Create a fresh session and disguise it as a random web browser
-            session = requests.Session()
-            session.headers.update({'User-Agent': random.choice(user_agents)})
+            # Fetch 20 stocks at once. group_by='ticker' makes it easy to parse.
+            data = yf.download(chunk, start="2021-01-01", group_by='ticker', progress=False, threads=False)
             
-            # Use period="5y" instead of a start date to ensure massive data grabs
-            stock = yf.Ticker(ticker)
-            data = stock.history(period="5y")
-            
-            # STRICT GUARD: If Yahoo returns empty or truncated data, skip it smoothly
             if data.empty:
+                error_log.warning(f"⚠️ Yahoo returned empty data for batch {current_chunk_num}. Retrying in 5s...")
+                time.sleep(5)
                 continue
-            if len(data) < 100:
-                continue
-                
-            # Clean timezones to prevent Pandas merging issues
-            if data.index.tz is not None:
-                data.index = data.index.tz_localize(None)
-                
-            ticker_df = calculate_indicators(data)
-            ticker_df['Ticker'] = ticker
-            processed_dfs.append(ticker_df)
-            
+
+            # Parse the chunked data
+            if isinstance(data.columns, pd.MultiIndex):
+                valid_tickers = data.columns.get_level_values(0).unique()
+                for ticker in valid_tickers:
+                    ticker_df = data[ticker].copy()
+                    ticker_df.dropna(how='all', inplace=True)
+                    
+                    if not ticker_df.empty and len(ticker_df) > 100:
+                        try:
+                            # Clean timezones
+                            if ticker_df.index.tz is not None:
+                                ticker_df.index = ticker_df.index.tz_localize(None)
+                                
+                            calc_df = calculate_indicators(ticker_df)
+                            calc_df['Ticker'] = ticker
+                            processed_dfs.append(calc_df)
+                        except Exception as e:
+                            pass # Skip individual math failures without crashing
+            else:
+                # Fallback if the chunk only had 1 valid stock and flattened the index
+                if not data.empty and len(data) > 100:
+                    if data.index.tz is not None:
+                        data.index = data.index.tz_localize(None)
+                    calc_df = calculate_indicators(data)
+                    calc_df['Ticker'] = chunk[0]
+                    processed_dfs.append(calc_df)
+
         except Exception as e:
-            # Only print critical math errors, not connection drops
-            error_log.error(f"❌ Math engine failed on {ticker}. Reason: {str(e)}")
+            error_log.error(f"❌ Batch {current_chunk_num} failed. Reason: {str(e)}")
             
-        # THE MAGIC TRICK: Pause the script for a random fraction of a second.
-        # This stops Yahoo from identifying the app as a DDoS bot.
-        time.sleep(random.uniform(0.3, 0.9))
+        # Breathe for 2 seconds between chunks to avoid Yahoo's 429 Rate Limit
+        time.sleep(2)
 
     progress_text.empty()
     progress_bar.empty()
@@ -279,15 +290,17 @@ def fetch_and_process_group(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    st.info("Initiating throttled fetch protocol to bypass Cloud IP blocks. This will take ~3 minutes to complete safely.")
+    st.info("Initiating Chunked Fetch Protocol. Fetching stocks in batches of 20 to prevent rate-limiting...")
     
-    df_100 = fetch_and_process_group(NIFTY_100_TICKERS)
-    df_midcap = fetch_and_process_group(NIFTY_MIDCAP_100_TICKERS)
+    # We only need to fetch Nifty 200, because Nifty 100 is already inside Nifty 200!
+    # This prevents us from downloading the top 100 stocks twice.
+    df_200 = fetch_and_process_group(NIFTY_200_TICKERS)
     
-    if df_100.empty:
+    if df_200.empty:
         return pd.DataFrame(), pd.DataFrame()
         
-    df_200 = pd.concat([df_100, df_midcap]) if not df_midcap.empty else df_100
+    # Split the Nifty 100 back out from the master Nifty 200 dataset
+    df_100 = df_200[df_200['Ticker'].isin(NIFTY_100_TICKERS)]
     
     return df_100, df_200
 
