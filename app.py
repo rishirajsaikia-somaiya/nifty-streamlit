@@ -211,35 +211,47 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. BULLETPROOF DATA FETCHING (One-by-One)
+# 4. STREAMLIT CLOUD BYPASS DATA FETCHING
 # =========================================================================
-def fetch_and_process_group(tickers_list):
+def fetch_and_process_group(tickers_list, max_retries=2):
     processed_dfs = []
     
-    # We fetch them one at a time. It takes ~45 seconds, but it never fails.
-    for ticker in tickers_list:
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    error_log = st.empty() # New UI element to show us exactly what the server sees
+    
+    for i, ticker in enumerate(tickers_list):
+        progress_text.text(f"Fetching {ticker} ({i+1}/{len(tickers_list)})...")
+        progress_bar.progress((i + 1) / len(tickers_list))
+        
+        # Using Ticker().history() instead of download() to bypass the main API block
         try:
-            data = yf.download(ticker, start="2021-01-01", progress=False, threads=False)
+            stock = yf.Ticker(ticker)
+            # Fetch data using the history endpoint
+            data = stock.history(start="2021-01-01")
             
-            if data.empty or len(data) < 50:
+            # If Yahoo blocked the Streamlit server, this will trigger
+            if data.empty:
+                error_log.warning(f"⚠️ Yahoo returned empty data for {ticker}. The Streamlit IP might be rate-limited.")
                 continue
-            
-            # Flattens multi-index columns if yfinance versions mismatch
-            if isinstance(data.columns, pd.MultiIndex):
-                data.columns = data.columns.get_level_values(0)
+                
+            # Clean up the timezone timezone-aware index which can break Pandas merging
+            if data.index.tz is not None:
+                data.index = data.index.tz_localize(None)
                 
             ticker_df = calculate_indicators(data)
             ticker_df['Ticker'] = ticker
             processed_dfs.append(ticker_df)
             
         except Exception as e:
-            # If a single stock is delisted, it skips it without breaking the rest
-            pass
+            error_log.error(f"❌ Server crashed on {ticker}. Reason: {str(e)}")
+
+    progress_text.empty()
+    progress_bar.empty()
 
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
-        # Drop rows that have NaN because of 52-day calculations
         final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
         
@@ -247,16 +259,14 @@ def fetch_and_process_group(tickers_list):
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    # Fetch Nifty 100
-    df_100 = fetch_and_process_group(NIFTY_100_TICKERS)
+    st.info("Initiating Streamlit Cloud IP Bypass protocol...")
     
-    # Fetch Midcap 100
+    df_100 = fetch_and_process_group(NIFTY_100_TICKERS)
     df_midcap = fetch_and_process_group(NIFTY_MIDCAP_100_TICKERS)
     
     if df_100.empty:
         return pd.DataFrame(), pd.DataFrame()
         
-    # Combine them logically to create Nifty 200 without double-downloading
     df_200 = pd.concat([df_100, df_midcap]) if not df_midcap.empty else df_100
     
     return df_100, df_200
