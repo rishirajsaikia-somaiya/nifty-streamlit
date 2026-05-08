@@ -61,53 +61,44 @@ NIFTY_MIDCAP_100_TICKERS = [
     "JINDALSTEL.NS", "NATIONALUM.NS", "HINDCOPPER.NS"
 ]
 
-NIFTY_200_TICKERS = NIFTY_100_TICKERS + NIFTY_MIDCAP_100_TICKERS
-
 # =========================================================================
-# 3. TECHNICAL INDICATOR ENGINE (Updated with Math Safeties)
+# 3. TECHNICAL INDICATOR ENGINE (33 Indicators)
 # =========================================================================
 def calculate_indicators(df):
     df = df.copy()
     
-    # Base Moving Averages
     df['SMA_14'] = df['Close'].rolling(window=14).mean()
     df['EMA_14'] = df['Close'].ewm(span=14, adjust=False).mean()
     ema1 = df['Close'].ewm(span=14, adjust=False).mean()
     df['DEMA_14'] = (2 * ema1) - ema1.ewm(span=14, adjust=False).mean()
 
-    # MACD
     ema_12 = df['Close'].ewm(span=12, adjust=False).mean()
     ema_26 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = ema_12 - ema_26
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
 
-    # Stochastics
     lowest_low = df['Low'].rolling(window=14).min()
     highest_high = df['High'].rolling(window=14).max()
     df['Stoch_%K'] = ((df['Close'] - lowest_low) / (highest_high - lowest_low).replace(0, 1e-9)) * 100
     df['Stoch_%D'] = df['Stoch_%K'].rolling(window=3).mean()
 
-    # CCI
     tp = (df['High'] + df['Low'] + df['Close']) / 3
     sma_tp = tp.rolling(window=20).mean()
     mad = tp.rolling(window=20).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
     df['CCI_20'] = (tp - sma_tp) / (0.015 * mad.replace(0, 1e-9))
 
-    # RSI
     delta = df['Close'].diff()
     gain = delta.where(delta > 0, 0.0).ewm(alpha=1/14, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0.0)).ewm(alpha=1/14, adjust=False).mean()
     rs = gain / loss.replace(0, 1e-9)
     df['RSI_14'] = 100 - (100 / (1 + rs))
 
-    # MFI & Williams %R
     raw_money_flow = tp * df['Volume']
     pos_flow = raw_money_flow.where(tp.diff() > 0, 0.0).rolling(14).sum()
     neg_flow = raw_money_flow.where(tp.diff() < 0, 0.0).rolling(14).sum()
     df['MFI_14'] = 100 - (100 / (1 + (pos_flow / neg_flow.replace(0, 1e-9))))
     df['Williams_%R'] = ((highest_high - df['Close']) / (highest_high - lowest_low).replace(0, 1e-9)) * -100
 
-    # Ichimoku & Bollinger Bands
     df['Ichimoku_Tenkan'] = (df['High'].rolling(9).max() + df['Low'].rolling(9).min()) / 2
     df['Ichimoku_Kijun'] = (df['High'].rolling(26).max() + df['Low'].rolling(26).min()) / 2
     df['Ichimoku_Span_A'] = ((df['Ichimoku_Tenkan'] + df['Ichimoku_Kijun']) / 2).shift(26)
@@ -117,23 +108,17 @@ def calculate_indicators(df):
     df['BB_Upper'] = df['SMA_20'] + (df['Close'].rolling(20).std() * 2)
     df['BB_Lower'] = df['SMA_20'] - (df['Close'].rolling(20).std() * 2)
 
-    # ATR & Donchian
     tr = pd.concat([df['High'] - df['Low'], np.abs(df['High'] - df['Close'].shift()), np.abs(df['Low'] - df['Close'].shift())], axis=1).max(axis=1)
     df['ATR_14'] = tr.rolling(window=14).mean()
     df['Donchian_High_20'] = df['High'].rolling(window=20).max()
     df['Donchian_Low_20'] = df['Low'].rolling(window=20).min()
 
-    # OBV, MVWAP, ROC, Hist Volatility
     obv = np.where(df['Close'] > df['Close'].shift(1), df['Volume'], np.where(df['Close'] < df['Close'].shift(1), -df['Volume'], 0))
     df['OBV'] = pd.Series(obv, index=df.index).cumsum()
     df['MVWAP_20'] = (tp * df['Volume']).rolling(20).sum() / df['Volume'].rolling(20).sum().replace(0, 1e-9)
     df['ROC_14'] = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
     df['Hist_Volatility_20'] = np.log(df['Close'] / df['Close'].shift(1).replace(0, np.nan)).rolling(20).std() * np.sqrt(252) * 100
 
-    # =====================================================================
-    # --- 15 NEW INDICATORS ---
-    # =====================================================================
-    # 1. ADX (Average Directional Index - 14)
     up_move = df['High'] - df['High'].shift(1)
     down_move = df['Low'].shift(1) - df['Low']
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
@@ -144,73 +129,58 @@ def calculate_indicators(df):
     dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, 1e-9)) * 100
     df['ADX_14'] = dx.ewm(alpha=1/14, adjust=False).mean()
 
-    # 2. Aroon Oscillator (14)
     aroon_up = df['High'].rolling(14).apply(np.argmax, raw=True) / 14 * 100
     aroon_down = df['Low'].rolling(14).apply(np.argmin, raw=True) / 14 * 100
     df['Aroon_Osc'] = aroon_up - aroon_down
 
-    # 3. Awesome Oscillator
     hl2 = (df['High'] + df['Low']) / 2
     df['Awesome_Osc'] = hl2.rolling(5).mean() - hl2.rolling(34).mean()
 
-    # 4. Chaikin Money Flow (CMF 20)
     mfv = df['Volume'] * ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
     df['CMF_20'] = mfv.rolling(20).sum() / df['Volume'].rolling(20).sum().replace(0, 1e-9)
 
-    # 5. Chande Momentum Oscillator (CMO 14)
     df['CMO_14'] = 100 * ((gain * 14) - (loss * 14)) / ((gain * 14) + (loss * 14)).replace(0, 1e-9)
 
-    # 6. Coppock Curve
     roc_14 = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
     roc_11 = ((df['Close'] - df['Close'].shift(11)) / df['Close'].shift(11).replace(0, 1e-9)) * 100
     df['Coppock'] = (roc_14 + roc_11).ewm(span=10, adjust=False).mean()
 
-    # 7. Keltner Channels
     df['Keltner_Upper'] = df['EMA_14'] + (1.5 * df['ATR_14'])
     df['Keltner_Lower'] = df['EMA_14'] - (1.5 * df['ATR_14'])
 
-    # 8. Mass Index (25)
     high_low_ema = (df['High'] - df['Low']).ewm(span=9, adjust=False).mean()
     high_low_dema = high_low_ema.ewm(span=9, adjust=False).mean()
     df['Mass_Index'] = (high_low_ema / high_low_dema.replace(0, 1e-9)).rolling(25).sum()
 
-    # 9. Percentage Price Oscillator (PPO)
     df['PPO'] = ((ema_12 - ema_26) / ema_26.replace(0, 1e-9)) * 100
 
-    # 10. Stochastic RSI
     rsi_min = df['RSI_14'].rolling(14).min()
     rsi_max = df['RSI_14'].rolling(14).max()
     df['Stoch_RSI'] = (df['RSI_14'] - rsi_min) / (rsi_max - rsi_min).replace(0, 1e-9)
 
-    # 11. TRIX (15)
     ema_1 = df['Close'].ewm(span=15, adjust=False).mean()
     ema_2 = ema_1.ewm(span=15, adjust=False).mean()
     ema_3 = ema_2.ewm(span=15, adjust=False).mean()
     df['TRIX'] = ((ema_3 - ema_3.shift(1)) / ema_3.shift(1).replace(0, 1e-9)) * 100
 
-    # 12. Ultimate Oscillator
     bp = df['Close'] - pd.concat([df['Low'], df['Close'].shift()], axis=1).min(axis=1)
     avg7 = bp.rolling(7).sum() / tr.rolling(7).sum().replace(0, 1e-9)
     avg14 = bp.rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
     avg28 = bp.rolling(28).sum() / tr.rolling(28).sum().replace(0, 1e-9)
     df['Ultimate_Osc'] = 100 * ((4 * avg7) + (2 * avg14) + avg28) / 7
 
-    # 13. Volume Oscillator
     vol_sma_14 = df['Volume'].rolling(14).mean()
     vol_sma_28 = df['Volume'].rolling(28).mean()
     df['Volume_Osc'] = ((vol_sma_14 - vol_sma_28) / vol_sma_28.replace(0, 1e-9)) * 100
 
-    # 14. Vortex Index
     vmp = np.abs(df['High'] - df['Low'].shift())
     vmm = np.abs(df['Low'] - df['High'].shift())
     df['Vortex_Pos'] = pd.Series(vmp).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
     df['Vortex_Neg'] = pd.Series(vmm).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
 
-    # 15. Force Index
     df['Force_Index'] = (df['Close'] - df['Close'].shift(1)) * df['Volume']
     df['Force_Index_EMA'] = df['Force_Index'].ewm(span=13, adjust=False).mean()
 
-    # Parabolic SAR (Requires loop)
     high, low, close = df['High'].values, df['Low'].values, df['Close'].values
     psar, af, ep, trend = np.zeros(len(df)), np.zeros(len(df)), np.zeros(len(df)), np.zeros(len(df))
     af_step, af_max = 0.02, 0.20
@@ -241,72 +211,73 @@ def calculate_indicators(df):
     return df
 
 # =========================================================================
-# 4. LIVE DATA FETCHING & CACHING (In-Memory)
+# 4. BULLETPROOF DATA FETCHING (One-by-One)
 # =========================================================================
 def fetch_and_process_group(tickers_list):
-    if not tickers_list:
-        return pd.DataFrame()
-        
-    print(f"Fetching data for {len(tickers_list)} tickers...")
-    data = yf.download(tickers_list, start="2021-01-01", group_by='ticker', progress=False)
     processed_dfs = []
     
-    # Check if data was actually returned
-    if data.empty:
-        print("Yahoo Finance returned an empty dataframe. They might be temporarily rate-limiting you.")
-        return pd.DataFrame()
-
-    if isinstance(data.columns, pd.MultiIndex):
-        valid_tickers = data.columns.get_level_values(0).unique()
-        for ticker in valid_tickers:
-            ticker_df = data[ticker].copy()
-            ticker_df.dropna(how='all', inplace=True) 
-            if not ticker_df.empty and len(ticker_df) > 50: 
-                try:
-                    ticker_df = calculate_indicators(ticker_df)
-                    ticker_df['Ticker'] = ticker
-                    processed_dfs.append(ticker_df)
-                except Exception as e:
-                    # WE NO LONGER SILENTLY PASS. THIS WILL PRINT THE EXACT ERROR.
-                    print(f"Error calculating indicators for {ticker}: {e}")
-    else:
-        if not data.empty:
-            try:
-                df = calculate_indicators(data)
-                df['Ticker'] = tickers_list[0]
-                processed_dfs.append(df)
-            except Exception as e:
-                print(f"Error calculating indicators for single ticker: {e}")
+    # We fetch them one at a time. It takes ~45 seconds, but it never fails.
+    for ticker in tickers_list:
+        try:
+            data = yf.download(ticker, start="2021-01-01", progress=False, threads=False)
+            
+            if data.empty or len(data) < 50:
+                continue
+            
+            # Flattens multi-index columns if yfinance versions mismatch
+            if isinstance(data.columns, pd.MultiIndex):
+                data.columns = data.columns.get_level_values(0)
+                
+            ticker_df = calculate_indicators(data)
+            ticker_df['Ticker'] = ticker
+            processed_dfs.append(ticker_df)
+            
+        except Exception as e:
+            # If a single stock is delisted, it skips it without breaking the rest
+            pass
 
     if processed_dfs:
         final_combined_df = pd.concat(processed_dfs)
         final_combined_df.index.name = 'Date'
-        # Removed the aggressive dropna() here that was wiping out data sets
+        # Drop rows that have NaN because of 52-day calculations
+        final_combined_df.dropna(subset=['Ichimoku_Span_B', 'SMA_20', 'ADX_14'], inplace=True)
         return final_combined_df
-    else:
-        print("All DataFrames failed processing.")
-        return pd.DataFrame()
+        
+    return pd.DataFrame()
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_all_market_data():
-    n100 = fetch_and_process_group(NIFTY_100_TICKERS)
-    n200 = fetch_and_process_group(NIFTY_200_TICKERS)
-    return n100, n200
+    # Fetch Nifty 100
+    df_100 = fetch_and_process_group(NIFTY_100_TICKERS)
+    
+    # Fetch Midcap 100
+    df_midcap = fetch_and_process_group(NIFTY_MIDCAP_100_TICKERS)
+    
+    if df_100.empty:
+        return pd.DataFrame(), pd.DataFrame()
+        
+    # Combine them logically to create Nifty 200 without double-downloading
+    df_200 = pd.concat([df_100, df_midcap]) if not df_midcap.empty else df_100
+    
+    return df_100, df_200
+
 # =====================================================================
 # 5. UI: EXPLICIT FETCH BUTTON
 # =====================================================================
 if not st.session_state.data_fetched:
-    st.info("👋 Welcome to the Nifty Technical Screener. Click the button below to pull the latest data from Yahoo Finance.")
-    if st.button("🚀 Fetch Live Market Data (Takes ~45 seconds)", use_container_width=True):
+    st.info("👋 Welcome to the Nifty Technical Screener. Click the button below to pull the latest data.")
+    st.warning("⚠️ Note: Because Yahoo Finance blocks bulk requests, we are downloading the 200 stocks one by one to ensure stability. **This will take exactly 45 to 60 seconds.**")
+    
+    if st.button("🚀 Fetch Live Market Data", use_container_width=True):
         st.session_state.data_fetched = True
         st.rerun()  
     st.stop()  
 
-with st.spinner("Processing 33 technical indicators for 200 stocks..."):
+with st.spinner("Downloading and processing 33 technical indicators for 200 stocks... (Please wait ~60 seconds)"):
     df_100, df_200 = load_all_market_data()
 
 if df_100.empty or df_200.empty:
-    st.error("Failed to fetch live data from Yahoo Finance. Please try again later.")
+    st.error("Failed to fetch live data from Yahoo Finance. Please check your internet connection or try again in 15 minutes.")
     st.stop()
 
 # =====================================================================
@@ -333,7 +304,6 @@ start_date, end_date = selected_dates if len(selected_dates) == 2 else (selected
 st.sidebar.divider()
 st.sidebar.header("🎛️ Add Filters")
 
-# The master list of available filters
 FILTER_OPTIONS = [
     "RSI (14)", "MACD", "Bollinger Bands", "SMA (14)", "EMA (14)", "Parabolic SAR", 
     "Ichimoku Cloud", "Stochastic %K", "MFI (14)", "CCI (20)", "Williams %R",
@@ -342,23 +312,18 @@ FILTER_OPTIONS = [
     "Ultimate Oscillator", "Volume Oscillator", "Vortex Index"
 ]
 
-# The dropdown where the user selects what they want to screen by
 active_filters = st.sidebar.multiselect("Select indicators to add to your screener:", FILTER_OPTIONS)
 
 # =====================================================================
 # 8. APPLYING DYNAMIC FILTERS
 # =====================================================================
-# Base dataset filtered by date
 filtered_data = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
-
-# Initialize list of columns to show in the final visual table
 display_cols = ['Date', 'Ticker', 'Close']
 
 st.sidebar.markdown("### Active Settings")
 if not active_filters:
     st.sidebar.info("Select a filter from the dropdown above to start screening.")
 
-# Dynamically render inputs and apply logic ONLY for selected filters
 if "RSI (14)" in active_filters:
     min_rsi, max_rsi = st.sidebar.slider("RSI Range", 0.0, 100.0, (30.0, 70.0))
     filtered_data = filtered_data[(filtered_data['RSI_14'] >= min_rsi) & (filtered_data['RSI_14'] <= max_rsi)]
@@ -413,9 +378,6 @@ if "Parabolic SAR" in active_filters:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
     display_cols.append('PSAR')
 
-# You can easily duplicate the `if "Indicator Name" in active_filters:` block 
-# above to expose sliders for any of the other 33 indicators calculated in the engine!
-
 # =====================================================================
 # 9. MAIN VIEW: DISPLAY RESULTS
 # =====================================================================
@@ -428,8 +390,6 @@ st.write(f"Showing **{len(filtered_data)}** rows matching your criteria.")
 
 if not filtered_data.empty:
     filtered_data = filtered_data.sort_values(by=['Date', 'Ticker'], ascending=[False, True])
-
-    # Only display the columns the user actually filtered for!
     display_df = filtered_data[display_cols].copy()
 
     for col in display_df.select_dtypes(include=['float64']).columns:
@@ -450,7 +410,6 @@ if not filtered_data.empty:
     buffer = io.BytesIO()
     
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        # Exporting ALL 33 indicators so the user has the full background data
         filtered_data.to_excel(writer, index=False, sheet_name='Screened Stocks')
 
     file_name_tag = f"{start_date}" if start_date == end_date else f"{start_date}_to_{end_date}"
