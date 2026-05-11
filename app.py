@@ -47,64 +47,76 @@ st.divider()
 # =====================================================================
 # 4. MARKET OVERVIEW DASHBOARD
 # =====================================================================
-# Get the unique dates and sort them to find today and yesterday
 unique_dates = sorted(df['Date'].unique())
 
 if len(unique_dates) >= 2:
     latest_date = unique_dates[-1]
     prev_date = unique_dates[-2]
     
-    st.markdown(f"## 📊 Market Overview ({latest_date})")
+    st.markdown(f"## 📊 Market Pulse ({latest_date})")
     
-    # Isolate data for the last two days
     latest_data = df[df['Date'] == latest_date].set_index('Ticker')
     prev_data = df[df['Date'] == prev_date].set_index('Ticker')
     
-    # Join them to calculate daily percentage change
-    merged = latest_data[['Close']].join(prev_data[['Close']], rsuffix='_prev')
+    # Join them to calculate daily metrics
+    merged = latest_data.join(prev_data[['Close']], rsuffix='_prev')
     merged['Pct_Change'] = ((merged['Close'] - merged['Close_prev']) / merged['Close_prev']) * 100
     
-    # Calculate Breadth
+    # --- NON-INDICATOR METRICS (MARKET INTERNALS) ---
+    # 1. Turnover (Rupee value traded = Price * Volume)
+    merged['Turnover'] = merged['Close'] * merged['Volume']
+    
+    # 2. Gap Ups / Gap Downs (Today's Open vs Yesterday's Close)
+    gap_ups = len(merged[merged['Open'] > merged['Close_prev']])
+    gap_downs = len(merged[merged['Open'] < merged['Close_prev']])
+    
+    # 3. Breadth
     advancers = len(merged[merged['Pct_Change'] > 0])
     decliners = len(merged[merged['Pct_Change'] < 0])
-    neutral = len(merged[merged['Pct_Change'] == 0])
-    
-    # Calculate Overall Index Health (Average RSI & Trend)
-    avg_rsi = latest_data['RSI_14'].mean()
-    stocks_above_sma20 = len(latest_data[latest_data['Close'] > latest_data['SMA_20']])
     
     # --- ROW 1: KPIs ---
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("📈 Advancing Stocks", advancers)
-    col2.metric("📉 Declining Stocks", decliners)
-    col3.metric("🎯 Average Market RSI", f"{avg_rsi:.1f}")
-    col4.metric("🚀 Stocks > 20-Day SMA", f"{stocks_above_sma20} / {len(latest_data)}")
+    col1.metric("📈 Advancers vs Decliners", f"{advancers} / {decliners}")
+    col2.metric("🌅 Gap Ups vs Downs", f"{gap_ups} / {gap_downs}")
+    col3.metric("🎯 Average Market RSI", f"{latest_data['RSI_14'].mean():.1f}")
+    col4.metric("🚀 Stocks > 20-Day SMA", f"{len(latest_data[latest_data['Close'] > latest_data['SMA_20']])}")
     
     st.write("") # Spacer
     
-    # --- ROW 2: Top Movers ---
-    col_g, col_l = st.columns(2)
+    # --- ROW 2: Top Movers & Money Flow ---
+    col_g, col_l, col_v = st.columns(3)
     
     with col_g:
-        st.markdown("#### 🔥 Top 5 Gainers")
+        st.markdown("#### 🔥 Top Gainers")
         top_gainers = merged.nlargest(5, 'Pct_Change')[['Close', 'Pct_Change']]
-        top_gainers.columns = ['Close Price (₹)', 'Change (%)']
-        
-        # Add visual styling to the dataframe
+        top_gainers.columns = ['Close (₹)', 'Change (%)']
         st.dataframe(
-            top_gainers.style.format({'Close Price (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
-                       .map(lambda x: 'color: green' if x > 0 else '', subset=['Change (%)']),
+            top_gainers.style.format({'Close (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
+                       .map(lambda x: 'color: #00FF00' if x > 0 else '', subset=['Change (%)']),
             use_container_width=True
         )
 
     with col_l:
-        st.markdown("#### 🩸 Top 5 Losers")
+        st.markdown("#### 🩸 Top Losers")
         top_losers = merged.nsmallest(5, 'Pct_Change')[['Close', 'Pct_Change']]
-        top_losers.columns = ['Close Price (₹)', 'Change (%)']
+        top_losers.columns = ['Close (₹)', 'Change (%)']
+        st.dataframe(
+            top_losers.style.format({'Close (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
+                      .map(lambda x: 'color: #FF4B4B' if x < 0 else '', subset=['Change (%)']),
+            use_container_width=True
+        )
+        
+    with col_v:
+        st.markdown("#### 💸 Highest Turnover")
+        st.caption("Where the biggest money flowed today")
+        # Sort by the most capital traded, display turnover in Crores (Cr)
+        top_volume = merged.nlargest(5, 'Turnover')[['Close', 'Turnover']]
+        top_volume['Turnover (Cr)'] = top_volume['Turnover'] / 10000000  # Convert to Crores
+        top_volume = top_volume[['Close', 'Turnover (Cr)']]
+        top_volume.columns = ['Close (₹)', 'Turnover (Cr)']
         
         st.dataframe(
-            top_losers.style.format({'Close Price (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
-                      .map(lambda x: 'color: red' if x < 0 else '', subset=['Change (%)']),
+            top_volume.style.format({'Close (₹)': '{:.2f}', 'Turnover (Cr)': '₹{:.2f} Cr'}),
             use_container_width=True
         )
 
