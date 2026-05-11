@@ -23,10 +23,10 @@ jobs:
       - name: Run fetcher
         run: python fetcher.py
         
-      - name: Commit and push CSV
+      - name: Commit and push Data
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add nifty_data.csv
-          git commit -m "Auto-update market data" || exit 0
+          git add nifty_data.csv.gz
+          git commit -m "Auto-update compressed market data" || exit 0
           git push
