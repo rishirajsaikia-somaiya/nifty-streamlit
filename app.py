@@ -60,7 +60,11 @@ FILTER_OPTIONS = [
     "Ichimoku Cloud", "Stochastic %K", "MFI (14)", "CCI (20)", "Williams %R",
     "ADX (14)", "Aroon Oscillator", "Awesome Oscillator", "Chaikin Money Flow",
     "Chande Momentum (CMO)", "Keltner Channels", "PPO", "Stochastic RSI",
-    "Ultimate Oscillator", "Volume Oscillator", "Vortex Index"
+    "Ultimate Oscillator", "Volume Oscillator", "Vortex Index",
+    # --- NEW INDICATORS ---
+    "Accumulation/Distribution", "Chaikin Volatility (10)", "Detrended Price Oscillator (20)",
+    "Ease of Movement (14)", "Median Price", "Momentum (10)", "Price Volume Trend", 
+    "Standard Deviation (20)", "Typical Price", "Volume ROC (14)"
 ]
 
 active_filters = st.sidebar.multiselect("Select indicators to add to your screener:", FILTER_OPTIONS)
@@ -128,6 +132,56 @@ if "Parabolic SAR" in active_filters:
     else:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
     display_cols.append('PSAR')
+
+# --- THE 10 NEW UI FILTERS ---
+if "Accumulation/Distribution" in active_filters:
+    display_cols.append('Acc_Dist')
+    
+if "Chaikin Volatility (10)" in active_filters:
+    min_cv = st.sidebar.slider("Minimum Chaikin Volatility %", -50.0, 50.0, 0.0)
+    filtered_data = filtered_data[filtered_data['Chaikin_Volatility_10'] >= min_cv]
+    display_cols.append('Chaikin_Volatility_10')
+
+if "Detrended Price Oscillator (20)" in active_filters:
+    dpo_status = st.sidebar.selectbox("DPO (20) Zero-Line", ["Above Zero (Bullish)", "Below Zero (Bearish)"])
+    if dpo_status == "Above Zero (Bullish)":
+        filtered_data = filtered_data[filtered_data['DPO_20'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['DPO_20'] < 0]
+    display_cols.append('DPO_20')
+
+if "Ease of Movement (14)" in active_filters:
+    eom_status = st.sidebar.selectbox("EOM (14)", ["Positive (Accumulation)", "Negative (Distribution)"])
+    if eom_status == "Positive (Accumulation)":
+        filtered_data = filtered_data[filtered_data['EOM_14'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['EOM_14'] < 0]
+    display_cols.append('EOM_14')
+
+if "Median Price" in active_filters:
+    display_cols.append('Median_Price')
+
+if "Momentum (10)" in active_filters:
+    mom_status = st.sidebar.selectbox("Momentum (10)", ["Positive", "Negative"])
+    if mom_status == "Positive":
+        filtered_data = filtered_data[filtered_data['Momentum_10'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['Momentum_10'] < 0]
+    display_cols.append('Momentum_10')
+
+if "Price Volume Trend" in active_filters:
+    display_cols.append('PVT')
+
+if "Standard Deviation (20)" in active_filters:
+    display_cols.append('Std_Dev_20')
+
+if "Typical Price" in active_filters:
+    display_cols.append('Typical_Price')
+
+if "Volume ROC (14)" in active_filters:
+    min_vroc = st.sidebar.slider("Minimum Volume Spike % (VROC)", -100.0, 500.0, 50.0)
+    filtered_data = filtered_data[filtered_data['Volume_ROC_14'] >= min_vroc]
+    display_cols.append('Volume_ROC_14')
 
 # =====================================================================
 # 6. MAIN VIEW: DISPLAY RESULTS
