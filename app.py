@@ -55,31 +55,48 @@ if len(unique_dates) >= 2:
     
     st.markdown(f"## 📊 Market Pulse ({latest_date})")
     
+    # --- ON-THE-FLY INTERNAL CALCULATIONS ---
+    # Grab the last 20 days of data to establish baselines for RVOL and ADR
+    last_20_days = unique_dates[-20:] if len(unique_dates) >= 20 else unique_dates
+    recent_data = df[df['Date'].isin(last_20_days)].copy()
+    
+    # Calculate 20-day Average Volume 
+    avg_vol = recent_data.groupby('Ticker')['Volume'].mean()
+    
+    # Calculate 20-day Average Daily Range (ADR as a percentage)
+    recent_data['Daily_Range'] = ((recent_data['High'] - recent_data['Low']) / recent_data['Low']) * 100
+    avg_adr = recent_data.groupby('Ticker')['Daily_Range'].mean()
+
+    # --- TODAY'S DATA ---
     latest_data = df[df['Date'] == latest_date].set_index('Ticker')
     prev_data = df[df['Date'] == prev_date].set_index('Ticker')
     
-    # Join them to calculate daily metrics
+    # Join today and yesterday to calculate daily metrics
     merged = latest_data.join(prev_data[['Close']], rsuffix='_prev')
     merged['Pct_Change'] = ((merged['Close'] - merged['Close_prev']) / merged['Close_prev']) * 100
     
-    # --- NON-INDICATOR METRICS (MARKET INTERNALS) ---
-    # 1. Turnover (Rupee value traded = Price * Volume)
+    # 1. Turnover (Total Rupee value traded today)
     merged['Turnover'] = merged['Close'] * merged['Volume']
+    total_turnover_cr = merged['Turnover'].sum() / 10000000  # Convert to Crores
     
-    # 2. Gap Ups / Gap Downs (Today's Open vs Yesterday's Close)
+    # 2. Gap Ups / Gap Downs (Overnight Sentiment)
     gap_ups = len(merged[merged['Open'] > merged['Close_prev']])
     gap_downs = len(merged[merged['Open'] < merged['Close_prev']])
     
-    # 3. Breadth
-    advancers = len(merged[merged['Pct_Change'] > 0])
-    decliners = len(merged[merged['Pct_Change'] < 0])
+    # 3. Relative Volume (RVOL)
+    merged = merged.join(avg_vol.rename('Avg_Vol_20')).join(avg_adr.rename('ADR_20'))
+    merged['RVOL'] = merged['Volume'] / merged['Avg_Vol_20']
+    avg_rvol = merged['RVOL'].mean()
+    
+    # 4. Average Daily Range
+    avg_market_adr = merged['ADR_20'].mean()
     
     # --- ROW 1: KPIs ---
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("📈 Advancers vs Decliners", f"{advancers} / {decliners}")
-    col2.metric("🌅 Gap Ups vs Downs", f"{gap_ups} / {gap_downs}")
-    col3.metric("🎯 Average Market RSI", f"{latest_data['RSI_14'].mean():.1f}")
-    col4.metric("🚀 Stocks > 20-Day SMA", f"{len(latest_data[latest_data['Close'] > latest_data['SMA_20']])}")
+    col1.metric("🌅 Gap Ups vs Downs", f"{gap_ups} / {gap_downs}")
+    col2.metric("💸 Total Index Turnover", f"₹{total_turnover_cr:,.0f} Cr")
+    col3.metric("📊 Average RVOL", f"{avg_rvol:.2f}x")
+    col4.metric("🎢 Average Daily Range", f"{avg_market_adr:.2f}%")
     
     st.write("") # Spacer
     
@@ -109,9 +126,8 @@ if len(unique_dates) >= 2:
     with col_v:
         st.markdown("#### 💸 Highest Turnover")
         st.caption("Where the biggest money flowed today")
-        # Sort by the most capital traded, display turnover in Crores (Cr)
         top_volume = merged.nlargest(5, 'Turnover')[['Close', 'Turnover']]
-        top_volume['Turnover (Cr)'] = top_volume['Turnover'] / 10000000  # Convert to Crores
+        top_volume['Turnover (Cr)'] = top_volume['Turnover'] / 10000000 
         top_volume = top_volume[['Close', 'Turnover (Cr)']]
         top_volume.columns = ['Close (₹)', 'Turnover (Cr)']
         
