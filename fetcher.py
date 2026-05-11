@@ -50,9 +50,7 @@ NIFTY_MIDCAP_100_TICKERS = [
 def calculate_indicators(df):
     df = df.copy()
     
-    # ---------------------------------------------------------
-    # ORIGINAL 33 INDICATORS
-    # ---------------------------------------------------------
+    # --- ORIGINAL INDICATORS ---
     df['SMA_14'] = df['Close'].rolling(window=14).mean()
     df['EMA_14'] = df['Close'].ewm(span=14, adjust=False).mean()
     ema1 = df['Close'].ewm(span=14, adjust=False).mean()
@@ -195,44 +193,72 @@ def calculate_indicators(df):
                     psar[i] = max(psar[i], high[i-1], high[i-2])
     df['PSAR'] = psar
 
-    # ---------------------------------------------------------
-    # NEW 10 INDICATORS
-    # ---------------------------------------------------------
-    # 1. Typical Price
+    # --- THE PREVIOUS 10 ---
     df['Typical_Price'] = tp
-
-    # 2. Median Price
     df['Median_Price'] = (df['High'] + df['Low']) / 2
-
-    # 3. Accumulation/Distribution (A/D)
     clv = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
     df['Acc_Dist'] = (clv * df['Volume']).cumsum()
-
-    # 4. Price Volume Trend (PVT)
     pvt_calc = ((df['Close'] - df['Close'].shift(1)) / df['Close'].shift(1).replace(0, 1e-9)) * df['Volume']
     df['PVT'] = pvt_calc.cumsum()
-
-    # 5. Standard Deviation (20-day)
     df['Std_Dev_20'] = df['Close'].rolling(window=20).std()
-
-    # 6. Detrended Price Oscillator (DPO 20)
     shifted_mean = df['Close'].rolling(window=20).mean().shift(int((20/2) + 1))
     df['DPO_20'] = df['Close'] - shifted_mean
-
-    # 7. Ease of Movement (EOM 14)
     dm = ((df['High'] + df['Low']) / 2) - ((df['High'].shift(1) + df['Low'].shift(1)) / 2)
     br = (df['Volume'] / 100000000) / ((df['High'] - df['Low']).replace(0, 1e-9))
     df['EOM_14'] = (dm / br.replace(0, 1e-9)).rolling(14).mean()
-
-    # 8. Volume Rate of Change (VROC 14)
     df['Volume_ROC_14'] = df['Volume'].pct_change(periods=14) * 100
-
-    # 9. Chaikin Volatility (CV 10)
     hl_ema = (df['High'] - df['Low']).ewm(span=10, adjust=False).mean()
     df['Chaikin_Volatility_10'] = ((hl_ema - hl_ema.shift(10)) / hl_ema.shift(10).replace(0, 1e-9)) * 100
-
-    # 10. Momentum Indicator (10-day)
     df['Momentum_10'] = df['Close'] - df['Close'].shift(10)
+
+    # --- THE FINAL 13 CAPSTONE INDICATORS ---
+    # 1. Bollinger Bandwidth
+    df['Bollinger_Bandwidth'] = ((df['BB_Upper'] - df['BB_Lower']) / df['SMA_20'].replace(0, 1e-9)) * 100
+
+    # 2. Balance of Power (BOP)
+    df['Balance_Of_Power'] = (df['Close'] - df['Open']) / (df['High'] - df['Low']).replace(0, 1e-9)
+
+    # 3. Disparity Index (14)
+    df['Disparity_Index_14'] = ((df['Close'] - df['SMA_14']) / df['SMA_14'].replace(0, 1e-9)) * 100
+
+    # 4. Elder Ray Index (Bull & Bear Power)
+    ema_13 = df['Close'].ewm(span=13, adjust=False).mean()
+    df['Elder_Ray_Bull'] = df['High'] - ema_13
+    df['Elder_Ray_Bear'] = df['Low'] - ema_13
+
+    # 5. High Low Bands (14)
+    df['High_Band_14'] = df['High'].rolling(14).mean()
+    df['Low_Band_14'] = df['Low'].rolling(14).mean()
+
+    # 6. Highest High Value (14)
+    df['Highest_High_14'] = df['High'].rolling(14).max()
+
+    # 7. Lowest Low Value (14)
+    df['Lowest_Low_14'] = df['Low'].rolling(14).min()
+
+    # 8. Moving Average Envelope (20-day, 5%)
+    df['MAE_Upper_20'] = df['SMA_20'] * 1.05
+    df['MAE_Lower_20'] = df['SMA_20'] * 0.95
+
+    # 9. Negative Volume Index (NVI)
+    roc_close = df['Close'].pct_change()
+    vol_down = df['Volume'] < df['Volume'].shift(1)
+    df['NVI'] = 1000.0 * (1 + np.where(vol_down, roc_close, 0.0)).cumprod()
+
+    # 10. Positive Volume Index (PVI)
+    vol_up = df['Volume'] > df['Volume'].shift(1)
+    df['PVI'] = 1000.0 * (1 + np.where(vol_up, roc_close, 0.0)).cumprod()
+
+    # 11. Performance Index (Normalized Return)
+    df['Performance_Index'] = (df['Close'] / df['Close'].iloc[0]) * 100
+
+    # 12. True Range
+    df['True_Range'] = tr
+
+    # 13. Ulcer Index (14)
+    max_close_14 = df['Close'].rolling(14).max()
+    percent_drawdown = ((df['Close'] - max_close_14) / max_close_14.replace(0, 1e-9)) * 100
+    df['Ulcer_Index_14'] = np.sqrt((percent_drawdown ** 2).rolling(14).mean())
 
     return df
 
@@ -264,11 +290,9 @@ def run_fetcher():
                 
                 if len(df) > 100:
                     df = df.set_index('Date')
-                    
                     calc_df = calculate_indicators(df)
                     calc_df['Ticker'] = ticker
                     calc_df['Index'] = "Nifty 100" if ticker in NIFTY_100_TICKERS else "Nifty Midcap 100"
-                    
                     calc_df = calc_df.reset_index()
                     all_data.append(calc_df)
                     print(f"✅ Processed {ticker}")
