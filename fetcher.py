@@ -312,8 +312,8 @@ def run_fetcher():
         for col in final_df.select_dtypes(include=['float64']).columns:
             final_df[col] = final_df[col].round(2)
             
-        final_df.to_csv("nifty_data.csv", index=False)
-        print(f"\n🎉 Success! Saved {len(final_df)} rows of data to nifty_data.csv")
+        final_df.to_csv("nifty_data.csv.gz", index=False, compression="gzip")
+        print(f"\n🎉 Success! Saved {len(final_df)} rows of data to nifty_data.csv.gz")
     else:
         print("\n💥 CRITICAL FAILURE: No stocks were processed successfully.")
 
