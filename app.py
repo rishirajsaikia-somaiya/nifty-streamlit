@@ -13,13 +13,14 @@ st.title("📈 Nifty Technical Screener")
 # 2. DATA LOADING (REAL-TIME READ)
 # =========================================================================
 def load_data():
-    file_path = "nifty_data.csv"
+    file_path = "nifty_data.csv.gz"
     
     if not os.path.exists(file_path):
         return pd.DataFrame()
         
     try:
-        df = pd.read_csv(file_path)
+        # Pandas natively reads compressed gzip files
+        df = pd.read_csv(file_path, compression='gzip')
         df['Date'] = pd.to_datetime(df['Date']).dt.date
         return df
     except Exception:
@@ -28,9 +29,9 @@ def load_data():
 df = load_data()
 
 if df.empty:
-    st.warning("⏳ Data file not found. Please ensure the GitHub Action has successfully run and saved 'nifty_data.csv' to your repository.")
+    st.warning("⏳ Data file not found. Please ensure the GitHub Action has successfully run and saved 'nifty_data.csv.gz' to your repository.")
     st.stop()
-
+    
 # =====================================================================
 # 3. TOP PANEL (INDEX SELECTION)
 # =====================================================================
