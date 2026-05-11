@@ -49,6 +49,10 @@ NIFTY_MIDCAP_100_TICKERS = [
 
 def calculate_indicators(df):
     df = df.copy()
+    
+    # ---------------------------------------------------------
+    # ORIGINAL 33 INDICATORS
+    # ---------------------------------------------------------
     df['SMA_14'] = df['Close'].rolling(window=14).mean()
     df['EMA_14'] = df['Close'].ewm(span=14, adjust=False).mean()
     ema1 = df['Close'].ewm(span=14, adjust=False).mean()
@@ -190,6 +194,46 @@ def calculate_indicators(df):
                         ep[i], af[i] = low[i], min(af[i] + af_step, af_max)
                     psar[i] = max(psar[i], high[i-1], high[i-2])
     df['PSAR'] = psar
+
+    # ---------------------------------------------------------
+    # NEW 10 INDICATORS
+    # ---------------------------------------------------------
+    # 1. Typical Price
+    df['Typical_Price'] = tp
+
+    # 2. Median Price
+    df['Median_Price'] = (df['High'] + df['Low']) / 2
+
+    # 3. Accumulation/Distribution (A/D)
+    clv = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
+    df['Acc_Dist'] = (clv * df['Volume']).cumsum()
+
+    # 4. Price Volume Trend (PVT)
+    pvt_calc = ((df['Close'] - df['Close'].shift(1)) / df['Close'].shift(1).replace(0, 1e-9)) * df['Volume']
+    df['PVT'] = pvt_calc.cumsum()
+
+    # 5. Standard Deviation (20-day)
+    df['Std_Dev_20'] = df['Close'].rolling(window=20).std()
+
+    # 6. Detrended Price Oscillator (DPO 20)
+    shifted_mean = df['Close'].rolling(window=20).mean().shift(int((20/2) + 1))
+    df['DPO_20'] = df['Close'] - shifted_mean
+
+    # 7. Ease of Movement (EOM 14)
+    dm = ((df['High'] + df['Low']) / 2) - ((df['High'].shift(1) + df['Low'].shift(1)) / 2)
+    br = (df['Volume'] / 100000000) / ((df['High'] - df['Low']).replace(0, 1e-9))
+    df['EOM_14'] = (dm / br.replace(0, 1e-9)).rolling(14).mean()
+
+    # 8. Volume Rate of Change (VROC 14)
+    df['Volume_ROC_14'] = df['Volume'].pct_change(periods=14) * 100
+
+    # 9. Chaikin Volatility (CV 10)
+    hl_ema = (df['High'] - df['Low']).ewm(span=10, adjust=False).mean()
+    df['Chaikin_Volatility_10'] = ((hl_ema - hl_ema.shift(10)) / hl_ema.shift(10).replace(0, 1e-9)) * 100
+
+    # 10. Momentum Indicator (10-day)
+    df['Momentum_10'] = df['Close'] - df['Close'].shift(10)
+
     return df
 
 def run_fetcher():
@@ -198,18 +242,14 @@ def run_fetcher():
 
     all_data = []
     
-    # Process stocks one by one to prevent API length-mismatch crashes
     for ticker in tickers:
         try:
-            # We initialize Ticker for a single stock at a time
             t = Ticker(ticker)
             df = t.history(start="2021-01-01")
             
-            # Check if valid dataframe was returned
             if isinstance(df, pd.DataFrame) and not df.empty and 'error' not in df.columns:
                 df = df.reset_index()
                 
-                # Standardize column names to Title Case
                 df = df.rename(columns={
                     'symbol': 'Ticker',
                     'date': 'Date',
@@ -220,10 +260,8 @@ def run_fetcher():
                     'volume': 'Volume'
                 })
                 
-                # Strip out timezone to avoid merge errors
                 df['Date'] = pd.to_datetime(df['Date']).dt.tz_localize(None)
                 
-                # Only process if we have enough data to calculate indicators
                 if len(df) > 100:
                     df = df.set_index('Date')
                     
@@ -242,13 +280,11 @@ def run_fetcher():
         except Exception as e:
             print(f"❌ Failed to fetch/calculate {ticker}: {e}")
             
-        # Small delay to keep the mobile API happy
         time.sleep(0.5)
 
     if all_data:
         final_df = pd.concat(all_data)
         
-        # Round numerical values to save CSV space
         for col in final_df.select_dtypes(include=['float64']).columns:
             final_df[col] = final_df[col].round(2)
             
