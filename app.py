@@ -125,7 +125,6 @@ if len(unique_dates) >= 2:
         
     with col_v:
         st.markdown("#### 💸 Highest Turnover")
-        st.caption("Where the biggest money flowed today")
         top_volume = merged.nlargest(5, 'Turnover')[['Close', 'Turnover']]
         top_volume['Turnover (Cr)'] = top_volume['Turnover'] / 10000000 
         top_volume = top_volume[['Close', 'Turnover (Cr)']]
