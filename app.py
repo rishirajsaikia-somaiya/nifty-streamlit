@@ -12,7 +12,6 @@ st.title("📈 Nifty Technical Screener")
 # =========================================================================
 # 2. DATA LOADING (REAL-TIME READ)
 # =========================================================================
-# Removed all caching. It will now read the file fresh every single time the page loads.
 def load_data():
     file_path = "nifty_data.csv"
     
@@ -33,7 +32,7 @@ if df.empty:
     st.stop()
 
 # =====================================================================
-# 3. TOP PANEL
+# 3. TOP PANEL (INDEX SELECTION)
 # =====================================================================
 selected_index = st.radio("Select Index to Screen", ["Nifty 100", "Nifty 200"], horizontal=True)
 
@@ -46,7 +45,73 @@ max_available_date = df['Date'].max()
 st.divider()
 
 # =====================================================================
-# 4. DYNAMIC SIDEBAR: ADD OR REMOVE FILTERS
+# 4. MARKET OVERVIEW DASHBOARD
+# =====================================================================
+# Get the unique dates and sort them to find today and yesterday
+unique_dates = sorted(df['Date'].unique())
+
+if len(unique_dates) >= 2:
+    latest_date = unique_dates[-1]
+    prev_date = unique_dates[-2]
+    
+    st.markdown(f"## 📊 Market Overview ({latest_date})")
+    
+    # Isolate data for the last two days
+    latest_data = df[df['Date'] == latest_date].set_index('Ticker')
+    prev_data = df[df['Date'] == prev_date].set_index('Ticker')
+    
+    # Join them to calculate daily percentage change
+    merged = latest_data[['Close']].join(prev_data[['Close']], rsuffix='_prev')
+    merged['Pct_Change'] = ((merged['Close'] - merged['Close_prev']) / merged['Close_prev']) * 100
+    
+    # Calculate Breadth
+    advancers = len(merged[merged['Pct_Change'] > 0])
+    decliners = len(merged[merged['Pct_Change'] < 0])
+    neutral = len(merged[merged['Pct_Change'] == 0])
+    
+    # Calculate Overall Index Health (Average RSI & Trend)
+    avg_rsi = latest_data['RSI_14'].mean()
+    stocks_above_sma20 = len(latest_data[latest_data['Close'] > latest_data['SMA_20']])
+    
+    # --- ROW 1: KPIs ---
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("📈 Advancing Stocks", advancers)
+    col2.metric("📉 Declining Stocks", decliners)
+    col3.metric("🎯 Average Market RSI", f"{avg_rsi:.1f}")
+    col4.metric("🚀 Stocks > 20-Day SMA", f"{stocks_above_sma20} / {len(latest_data)}")
+    
+    st.write("") # Spacer
+    
+    # --- ROW 2: Top Movers ---
+    col_g, col_l = st.columns(2)
+    
+    with col_g:
+        st.markdown("#### 🔥 Top 5 Gainers")
+        top_gainers = merged.nlargest(5, 'Pct_Change')[['Close', 'Pct_Change']]
+        top_gainers.columns = ['Close Price (₹)', 'Change (%)']
+        
+        # Add visual styling to the dataframe
+        st.dataframe(
+            top_gainers.style.format({'Close Price (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
+                       .map(lambda x: 'color: green' if x > 0 else '', subset=['Change (%)']),
+            use_container_width=True
+        )
+
+    with col_l:
+        st.markdown("#### 🩸 Top 5 Losers")
+        top_losers = merged.nsmallest(5, 'Pct_Change')[['Close', 'Pct_Change']]
+        top_losers.columns = ['Close Price (₹)', 'Change (%)']
+        
+        st.dataframe(
+            top_losers.style.format({'Close Price (₹)': '{:.2f}', 'Change (%)': '{:.2f}%'})
+                      .map(lambda x: 'color: red' if x < 0 else '', subset=['Change (%)']),
+            use_container_width=True
+        )
+
+st.divider()
+
+# =====================================================================
+# 5. DYNAMIC SIDEBAR: ADD OR REMOVE FILTERS
 # =====================================================================
 st.sidebar.header("🗓️ Timeframe")
 selected_dates = st.sidebar.date_input("Select Date Range", value=(max_available_date, max_available_date), min_value=min_available_date, max_value=max_available_date)
@@ -61,7 +126,6 @@ FILTER_OPTIONS = [
     "ADX (14)", "Aroon Oscillator", "Awesome Oscillator", "Chaikin Money Flow",
     "Chande Momentum (CMO)", "Keltner Channels", "PPO", "Stochastic RSI",
     "Ultimate Oscillator", "Volume Oscillator", "Vortex Index",
-    # --- NEW INDICATORS ---
     "Accumulation/Distribution", "Chaikin Volatility (10)", "Detrended Price Oscillator (20)",
     "Ease of Movement (14)", "Median Price", "Momentum (10)", "Price Volume Trend", 
     "Standard Deviation (20)", "Typical Price", "Volume ROC (14)"
@@ -70,7 +134,7 @@ FILTER_OPTIONS = [
 active_filters = st.sidebar.multiselect("Select indicators to add to your screener:", FILTER_OPTIONS)
 
 # =====================================================================
-# 5. APPLYING DYNAMIC FILTERS
+# 6. APPLYING DYNAMIC FILTERS
 # =====================================================================
 filtered_data = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
 display_cols = ['Date', 'Ticker', 'Close']
@@ -133,7 +197,7 @@ if "Parabolic SAR" in active_filters:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
     display_cols.append('PSAR')
 
-# --- THE 10 NEW UI FILTERS ---
+# --- THE 10 NEW INDICATOR FILTERS ---
 if "Accumulation/Distribution" in active_filters:
     display_cols.append('Acc_Dist')
     
@@ -183,13 +247,16 @@ if "Volume ROC (14)" in active_filters:
     filtered_data = filtered_data[filtered_data['Volume_ROC_14'] >= min_vroc]
     display_cols.append('Volume_ROC_14')
 
+
 # =====================================================================
-# 6. MAIN VIEW: DISPLAY RESULTS
+# 7. MAIN VIEW: DISPLAY SCREENED RESULTS
 # =====================================================================
+st.markdown("## 🔍 Screener Results")
+
 if start_date == end_date:
-    st.markdown(f"### Screened Results for **{start_date}**")
+    st.markdown(f"Results for **{start_date}**")
 else:
-    st.markdown(f"### Screened Results from **{start_date}** to **{end_date}**")
+    st.markdown(f"Results from **{start_date}** to **{end_date}**")
 
 st.write(f"Showing **{len(filtered_data)}** rows matching your criteria.")
 
@@ -207,7 +274,7 @@ else:
 st.divider()
 
 # =====================================================================
-# 7. EXPORT FEATURE
+# 8. EXPORT FEATURE
 # =====================================================================
 st.markdown("### Export Data")
 
