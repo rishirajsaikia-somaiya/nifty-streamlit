@@ -155,7 +155,12 @@ FILTER_OPTIONS = [
     "Ultimate Oscillator", "Volume Oscillator", "Vortex Index",
     "Accumulation/Distribution", "Chaikin Volatility (10)", "Detrended Price Oscillator (20)",
     "Ease of Movement (14)", "Median Price", "Momentum (10)", "Price Volume Trend", 
-    "Standard Deviation (20)", "Typical Price", "Volume ROC (14)"
+    "Standard Deviation (20)", "Typical Price", "Volume ROC (14)",
+    # --- FINAL 13 CAPSTONE INDICATORS ---
+    "Bollinger Bandwidth", "Balance of Power", "Disparity Index (14)", "Elder Ray Index",
+    "High Low Bands", "Highest High Value (14)", "Lowest Low Value (14)",
+    "Moving Average Envelope (20)", "Negative Volume Index", "Positive Volume Index",
+    "Performance Index", "True Range", "Ulcer Index (14)"
 ]
 
 active_filters = st.sidebar.multiselect("Select indicators to add to your screener:", FILTER_OPTIONS)
@@ -170,6 +175,7 @@ st.sidebar.markdown("### Active Settings")
 if not active_filters:
     st.sidebar.info("Select a filter from the dropdown above to start screening.")
 
+# --- BATCH 1 & 2 FILTERS (Snippet truncated for brevity, keep your existing logic here) ---
 if "RSI (14)" in active_filters:
     min_rsi, max_rsi = st.sidebar.slider("RSI Range", 0.0, 100.0, (30.0, 70.0))
     filtered_data = filtered_data[(filtered_data['RSI_14'] >= min_rsi) & (filtered_data['RSI_14'] <= max_rsi)]
@@ -224,7 +230,6 @@ if "Parabolic SAR" in active_filters:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
     display_cols.append('PSAR')
 
-# --- THE 10 NEW INDICATOR FILTERS ---
 if "Accumulation/Distribution" in active_filters:
     display_cols.append('Acc_Dist')
     
@@ -274,6 +279,59 @@ if "Volume ROC (14)" in active_filters:
     filtered_data = filtered_data[filtered_data['Volume_ROC_14'] >= min_vroc]
     display_cols.append('Volume_ROC_14')
 
+# --- THE FINAL 13 CAPSTONE UI FILTERS ---
+if "Bollinger Bandwidth" in active_filters:
+    display_cols.append('Bollinger_Bandwidth')
+
+if "Balance of Power" in active_filters:
+    bop_status = st.sidebar.selectbox("Balance of Power", ["Buyers in Control (> 0)", "Sellers in Control (< 0)"])
+    if bop_status == "Buyers in Control (> 0)":
+        filtered_data = filtered_data[filtered_data['Balance_Of_Power'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['Balance_Of_Power'] < 0]
+    display_cols.append('Balance_Of_Power')
+
+if "Disparity Index (14)" in active_filters:
+    display_cols.append('Disparity_Index_14')
+
+if "Elder Ray Index" in active_filters:
+    display_cols.extend(['Elder_Ray_Bull', 'Elder_Ray_Bear'])
+
+if "High Low Bands" in active_filters:
+    display_cols.extend(['High_Band_14', 'Low_Band_14'])
+
+if "Highest High Value (14)" in active_filters:
+    display_cols.append('Highest_High_14')
+
+if "Lowest Low Value (14)" in active_filters:
+    display_cols.append('Lowest_Low_14')
+
+if "Moving Average Envelope (20)" in active_filters:
+    mae_status = st.sidebar.selectbox("MAE (20, 5%)", ["Above Upper Band", "Below Lower Band", "Inside Bands"])
+    if mae_status == "Above Upper Band":
+        filtered_data = filtered_data[filtered_data['Close'] > filtered_data['MAE_Upper_20']]
+    elif mae_status == "Below Lower Band":
+        filtered_data = filtered_data[filtered_data['Close'] < filtered_data['MAE_Lower_20']]
+    else:
+        filtered_data = filtered_data[(filtered_data['Close'] <= filtered_data['MAE_Upper_20']) & (filtered_data['Close'] >= filtered_data['MAE_Lower_20'])]
+    display_cols.extend(['MAE_Upper_20', 'MAE_Lower_20'])
+
+if "Negative Volume Index" in active_filters:
+    display_cols.append('NVI')
+
+if "Positive Volume Index" in active_filters:
+    display_cols.append('PVI')
+
+if "Performance Index" in active_filters:
+    display_cols.append('Performance_Index')
+
+if "True Range" in active_filters:
+    display_cols.append('True_Range')
+
+if "Ulcer Index (14)" in active_filters:
+    max_ulcer = st.sidebar.slider("Max Ulcer Index (Risk/Drawdown %)", 0.0, 50.0, 10.0)
+    filtered_data = filtered_data[filtered_data['Ulcer_Index_14'] <= max_ulcer]
+    display_cols.append('Ulcer_Index_14')
 
 # =====================================================================
 # 7. MAIN VIEW: DISPLAY SCREENED RESULTS
