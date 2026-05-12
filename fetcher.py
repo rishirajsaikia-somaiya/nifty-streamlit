@@ -50,7 +50,9 @@ NIFTY_MIDCAP_100_TICKERS = [
 def calculate_indicators(df):
     df = df.copy()
     
-    # --- ORIGINAL INDICATORS ---
+    # ==========================================
+    # 1. ORIGINAL 33 INDICATORS (WITH BUG FIXES)
+    # ==========================================
     df['SMA_14'] = df['Close'].rolling(window=14).mean()
     df['EMA_14'] = df['Close'].ewm(span=14, adjust=False).mean()
     ema1 = df['Close'].ewm(span=14, adjust=False).mean()
@@ -103,19 +105,23 @@ def calculate_indicators(df):
     df['ROC_14'] = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
     df['Hist_Volatility_20'] = np.log(df['Close'] / df['Close'].shift(1).replace(0, np.nan)).rolling(20).std() * np.sqrt(252) * 100
 
+    # ADX FIX applied
     up_move = df['High'] - df['High'].shift(1)
     down_move = df['Low'].shift(1) - df['Low']
     plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
     minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+    plus_dm = pd.Series(plus_dm, index=df.index)
+    minus_dm = pd.Series(minus_dm, index=df.index)
     atr_smooth = df['ATR_14'].ewm(alpha=1/14, adjust=False).mean()
-    plus_di = 100 * (pd.Series(plus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
-    minus_di = 100 * (pd.Series(minus_dm).ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
+    plus_di = 100 * (plus_dm.ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
+    minus_di = 100 * (minus_dm.ewm(alpha=1/14, adjust=False).mean() / atr_smooth.replace(0, 1e-9))
     dx = (np.abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, 1e-9)) * 100
     df['ADX_14'] = dx.ewm(alpha=1/14, adjust=False).mean()
 
-    aroon_up = df['High'].rolling(14).apply(np.argmax, raw=True) / 14 * 100
-    aroon_down = df['Low'].rolling(14).apply(np.argmin, raw=True) / 14 * 100
-    df['Aroon_Osc'] = aroon_up - aroon_down
+    # Aroon FIX applied
+    aroon_up = df['High'].rolling(14).apply(lambda x: x.argmax(), raw=True)
+    aroon_down = df['Low'].rolling(14).apply(lambda x: x.argmin(), raw=True)
+    df['Aroon_Osc'] = ((aroon_up + 1) / 14 * 100) - ((aroon_down + 1) / 14 * 100)
 
     hl2 = (df['High'] + df['Low']) / 2
     df['Awesome_Osc'] = hl2.rolling(5).mean() - hl2.rolling(34).mean()
@@ -123,7 +129,10 @@ def calculate_indicators(df):
     mfv = df['Volume'] * ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
     df['CMF_20'] = mfv.rolling(20).sum() / df['Volume'].rolling(20).sum().replace(0, 1e-9)
 
-    df['CMO_14'] = 100 * ((gain * 14) - (loss * 14)) / ((gain * 14) + (loss * 14)).replace(0, 1e-9)
+    # CMO FIX applied
+    cmo_gain = delta.where(delta > 0, 0.0).rolling(window=14).sum()
+    cmo_loss = (-delta.where(delta < 0, 0.0)).rolling(window=14).sum()
+    df['CMO_14'] = 100 * ((cmo_gain - cmo_loss) / (cmo_gain + cmo_loss).replace(0, 1e-9))
 
     roc_14 = ((df['Close'] - df['Close'].shift(14)) / df['Close'].shift(14).replace(0, 1e-9)) * 100
     roc_11 = ((df['Close'] - df['Close'].shift(11)) / df['Close'].shift(11).replace(0, 1e-9)) * 100
@@ -140,7 +149,8 @@ def calculate_indicators(df):
 
     rsi_min = df['RSI_14'].rolling(14).min()
     rsi_max = df['RSI_14'].rolling(14).max()
-    df['Stoch_RSI'] = (df['RSI_14'] - rsi_min) / (rsi_max - rsi_min).replace(0, 1e-9)
+    # Stochastic RSI FIX applied
+    df['Stoch_RSI'] = ((df['RSI_14'] - rsi_min) / (rsi_max - rsi_min).replace(0, 1e-9)) * 100
 
     ema_1 = df['Close'].ewm(span=15, adjust=False).mean()
     ema_2 = ema_1.ewm(span=15, adjust=False).mean()
@@ -157,10 +167,11 @@ def calculate_indicators(df):
     vol_sma_28 = df['Volume'].rolling(28).mean()
     df['Volume_Osc'] = ((vol_sma_14 - vol_sma_28) / vol_sma_28.replace(0, 1e-9)) * 100
 
+    # Vortex FIX applied
     vmp = np.abs(df['High'] - df['Low'].shift())
     vmm = np.abs(df['Low'] - df['High'].shift())
-    df['Vortex_Pos'] = pd.Series(vmp).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
-    df['Vortex_Neg'] = pd.Series(vmm).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
+    df['Vortex_Pos'] = pd.Series(vmp, index=df.index).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
+    df['Vortex_Neg'] = pd.Series(vmm, index=df.index).rolling(14).sum() / tr.rolling(14).sum().replace(0, 1e-9)
 
     df['Force_Index'] = (df['Close'] - df['Close'].shift(1)) * df['Volume']
     df['Force_Index_EMA'] = df['Force_Index'].ewm(span=13, adjust=False).mean()
@@ -193,7 +204,9 @@ def calculate_indicators(df):
                     psar[i] = max(psar[i], high[i-1], high[i-2])
     df['PSAR'] = psar
 
-    # --- THE PREVIOUS 10 ---
+    # ==========================================
+    # 2. THE MIDDLE 10 INDICATORS
+    # ==========================================
     df['Typical_Price'] = tp
     df['Median_Price'] = (df['High'] + df['Low']) / 2
     clv = ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
@@ -211,51 +224,28 @@ def calculate_indicators(df):
     df['Chaikin_Volatility_10'] = ((hl_ema - hl_ema.shift(10)) / hl_ema.shift(10).replace(0, 1e-9)) * 100
     df['Momentum_10'] = df['Close'] - df['Close'].shift(10)
 
-    # --- THE FINAL 13 CAPSTONE INDICATORS ---
-    # 1. Bollinger Bandwidth
+    # ==========================================
+    # 3. THE FINAL 13 CAPSTONE INDICATORS
+    # ==========================================
     df['Bollinger_Bandwidth'] = ((df['BB_Upper'] - df['BB_Lower']) / df['SMA_20'].replace(0, 1e-9)) * 100
-
-    # 2. Balance of Power (BOP)
     df['Balance_Of_Power'] = (df['Close'] - df['Open']) / (df['High'] - df['Low']).replace(0, 1e-9)
-
-    # 3. Disparity Index (14)
     df['Disparity_Index_14'] = ((df['Close'] - df['SMA_14']) / df['SMA_14'].replace(0, 1e-9)) * 100
-
-    # 4. Elder Ray Index (Bull & Bear Power)
     ema_13 = df['Close'].ewm(span=13, adjust=False).mean()
     df['Elder_Ray_Bull'] = df['High'] - ema_13
     df['Elder_Ray_Bear'] = df['Low'] - ema_13
-
-    # 5. High Low Bands (14)
     df['High_Band_14'] = df['High'].rolling(14).mean()
     df['Low_Band_14'] = df['Low'].rolling(14).mean()
-
-    # 6. Highest High Value (14)
     df['Highest_High_14'] = df['High'].rolling(14).max()
-
-    # 7. Lowest Low Value (14)
     df['Lowest_Low_14'] = df['Low'].rolling(14).min()
-
-    # 8. Moving Average Envelope (20-day, 5%)
     df['MAE_Upper_20'] = df['SMA_20'] * 1.05
     df['MAE_Lower_20'] = df['SMA_20'] * 0.95
-
-    # 9. Negative Volume Index (NVI)
     roc_close = df['Close'].pct_change()
     vol_down = df['Volume'] < df['Volume'].shift(1)
     df['NVI'] = 1000.0 * (1 + np.where(vol_down, roc_close, 0.0)).cumprod()
-
-    # 10. Positive Volume Index (PVI)
     vol_up = df['Volume'] > df['Volume'].shift(1)
     df['PVI'] = 1000.0 * (1 + np.where(vol_up, roc_close, 0.0)).cumprod()
-
-    # 11. Performance Index (Normalized Return)
     df['Performance_Index'] = (df['Close'] / df['Close'].iloc[0]) * 100
-
-    # 12. True Range
     df['True_Range'] = tr
-
-    # 13. Ulcer Index (14)
     max_close_14 = df['Close'].rolling(14).max()
     percent_drawdown = ((df['Close'] - max_close_14) / max_close_14.replace(0, 1e-9)) * 100
     df['Ulcer_Index_14'] = np.sqrt((percent_drawdown ** 2).rolling(14).mean())
@@ -312,8 +302,9 @@ def run_fetcher():
         for col in final_df.select_dtypes(include=['float64']).columns:
             final_df[col] = final_df[col].round(2)
             
+        # SAVING AS COMPRESSED GZIP TO BYPASS GITHUB 100MB LIMIT
         final_df.to_csv("nifty_data.csv.gz", index=False, compression="gzip")
-        print(f"\n🎉 Success! Saved {len(final_df)} rows of data to nifty_data.csv.gz")
+        print(f"\n🎉 Success! Saved {len(final_df)} rows of compressed data to nifty_data.csv.gz")
     else:
         print("\n💥 CRITICAL FAILURE: No stocks were processed successfully.")
 
