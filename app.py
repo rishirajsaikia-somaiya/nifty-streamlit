@@ -208,7 +208,7 @@ st.sidebar.markdown("### Active Settings")
 if not active_filters:
     st.sidebar.info("Select a filter from the dropdown above to start screening.")
 
-# --- BATCH 1 & 2 FILTERS (Snippet truncated for brevity, keep your existing logic here) ---
+# --- BATCH 1: THE ORIGINAL INDICATORS ---
 if "RSI (14)" in active_filters:
     min_rsi, max_rsi = st.sidebar.slider("RSI Range", 0.0, 100.0, (30.0, 70.0))
     filtered_data = filtered_data[(filtered_data['RSI_14'] >= min_rsi) & (filtered_data['RSI_14'] <= max_rsi)]
@@ -240,6 +240,32 @@ if "SMA (14)" in active_filters:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['SMA_14']]
     display_cols.append('SMA_14')
 
+if "EMA (14)" in active_filters:
+    ema_status = st.sidebar.selectbox("Price vs EMA (14)", ["Above EMA", "Below EMA"])
+    if ema_status == "Above EMA":
+        filtered_data = filtered_data[filtered_data['Close'] > filtered_data['EMA_14']]
+    else:
+        filtered_data = filtered_data[filtered_data['Close'] < filtered_data['EMA_14']]
+    display_cols.append('EMA_14')
+
+if "Ichimoku Cloud" in active_filters:
+    ichimoku_status = st.sidebar.selectbox("Ichimoku Trend", ["Price Above Cloud (Bullish)", "Price Below Cloud (Bearish)"])
+    if ichimoku_status == "Price Above Cloud (Bullish)":
+        filtered_data = filtered_data[(filtered_data['Close'] > filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] > filtered_data['Ichimoku_Span_B'])]
+    else:
+        filtered_data = filtered_data[(filtered_data['Close'] < filtered_data['Ichimoku_Span_A']) & (filtered_data['Close'] < filtered_data['Ichimoku_Span_B'])]
+    display_cols.extend(['Ichimoku_Span_A', 'Ichimoku_Span_B'])
+
+if "Stochastic %K" in active_filters:
+    min_stoch, max_stoch = st.sidebar.slider("Stochastic %K Range", 0.0, 100.0, (20.0, 80.0))
+    filtered_data = filtered_data[(filtered_data['Stoch_%K'] >= min_stoch) & (filtered_data['Stoch_%K'] <= max_stoch)]
+    display_cols.append('Stoch_%K')
+
+if "CCI (20)" in active_filters:
+    min_cci, max_cci = st.sidebar.slider("CCI (20) Range", -300.0, 300.0, (-100.0, 100.0))
+    filtered_data = filtered_data[(filtered_data['CCI_20'] >= min_cci) & (filtered_data['CCI_20'] <= max_cci)]
+    display_cols.append('CCI_20')
+
 if "ADX (14)" in active_filters:
     min_adx = st.sidebar.slider("Minimum ADX (Trend Strength)", 0.0, 100.0, 25.0)
     filtered_data = filtered_data[filtered_data['ADX_14'] >= min_adx]
@@ -263,6 +289,83 @@ if "Parabolic SAR" in active_filters:
         filtered_data = filtered_data[filtered_data['Close'] < filtered_data['PSAR']]
     display_cols.append('PSAR')
 
+if "Aroon Oscillator" in active_filters:
+    aroon_status = st.sidebar.selectbox("Aroon Oscillator", ["Positive (Bullish)", "Negative (Bearish)"])
+    if aroon_status == "Positive (Bullish)":
+        filtered_data = filtered_data[filtered_data['Aroon_Osc'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['Aroon_Osc'] < 0]
+    display_cols.append('Aroon_Osc')
+
+if "Awesome Oscillator" in active_filters:
+    ao_status = st.sidebar.selectbox("Awesome Oscillator", ["Above Zero (Bullish)", "Below Zero (Bearish)"])
+    if ao_status == "Above Zero (Bullish)":
+        filtered_data = filtered_data[filtered_data['Awesome_Osc'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['Awesome_Osc'] < 0]
+    display_cols.append('Awesome_Osc')
+
+if "Chaikin Money Flow" in active_filters:
+    cmf_status = st.sidebar.selectbox("Chaikin Money Flow (20)", ["Positive (Buying Pressure)", "Negative (Selling Pressure)"])
+    if cmf_status == "Positive (Buying Pressure)":
+        filtered_data = filtered_data[filtered_data['CMF_20'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['CMF_20'] < 0]
+    display_cols.append('CMF_20')
+
+if "Chande Momentum (CMO)" in active_filters:
+    cmo_status = st.sidebar.selectbox("CMO Trend", ["Overbought (> 50)", "Oversold (< -50)", "Neutral"])
+    if cmo_status == "Overbought (> 50)":
+        filtered_data = filtered_data[filtered_data['CMO_14'] > 50]
+    elif cmo_status == "Oversold (< -50)":
+        filtered_data = filtered_data[filtered_data['CMO_14'] < -50]
+    else:
+        filtered_data = filtered_data[(filtered_data['CMO_14'] <= 50) & (filtered_data['CMO_14'] >= -50)]
+    display_cols.append('CMO_14')
+
+if "Keltner Channels" in active_filters:
+    kc_status = st.sidebar.selectbox("Keltner Channels", ["Above Upper Band", "Below Lower Band"])
+    if kc_status == "Above Upper Band":
+        filtered_data = filtered_data[filtered_data['Close'] > filtered_data['Keltner_Upper']]
+    else:
+        filtered_data = filtered_data[filtered_data['Close'] < filtered_data['Keltner_Lower']]
+    display_cols.extend(['Keltner_Upper', 'Keltner_Lower'])
+
+if "PPO" in active_filters:
+    ppo_status = st.sidebar.selectbox("PPO Signal", ["Positive Momentum (> 0)", "Negative Momentum (< 0)"])
+    if ppo_status == "Positive Momentum (> 0)":
+        filtered_data = filtered_data[filtered_data['PPO'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['PPO'] < 0]
+    display_cols.append('PPO')
+
+if "Stochastic RSI" in active_filters:
+    min_srsi, max_srsi = st.sidebar.slider("Stochastic RSI Range", 0.0, 100.0, (20.0, 80.0))
+    filtered_data = filtered_data[(filtered_data['Stoch_RSI'] >= min_srsi) & (filtered_data['Stoch_RSI'] <= max_srsi)]
+    display_cols.append('Stoch_RSI')
+
+if "Ultimate Oscillator" in active_filters:
+    min_uo, max_uo = st.sidebar.slider("Ultimate Oscillator Range", 0.0, 100.0, (30.0, 70.0))
+    filtered_data = filtered_data[(filtered_data['Ultimate_Osc'] >= min_uo) & (filtered_data['Ultimate_Osc'] <= max_uo)]
+    display_cols.append('Ultimate_Osc')
+
+if "Volume Oscillator" in active_filters:
+    vo_status = st.sidebar.selectbox("Volume Oscillator", ["Positive (Expanding)", "Negative (Contracting)"])
+    if vo_status == "Positive (Expanding)":
+        filtered_data = filtered_data[filtered_data['Volume_Osc'] > 0]
+    else:
+        filtered_data = filtered_data[filtered_data['Volume_Osc'] < 0]
+    display_cols.append('Volume_Osc')
+
+if "Vortex Index" in active_filters:
+    vi_status = st.sidebar.selectbox("Vortex Trend", ["Bullish (VI+ > VI-)", "Bearish (VI- > VI+)"])
+    if vi_status == "Bullish (VI+ > VI-)":
+        filtered_data = filtered_data[filtered_data['Vortex_Pos'] > filtered_data['Vortex_Neg']]
+    else:
+        filtered_data = filtered_data[filtered_data['Vortex_Pos'] < filtered_data['Vortex_Neg']]
+    display_cols.extend(['Vortex_Pos', 'Vortex_Neg'])
+
+# --- BATCH 2: THE MIDDLE 10 INDICATORS ---
 if "Accumulation/Distribution" in active_filters:
     display_cols.append('Acc_Dist')
     
@@ -312,7 +415,7 @@ if "Volume ROC (14)" in active_filters:
     filtered_data = filtered_data[filtered_data['Volume_ROC_14'] >= min_vroc]
     display_cols.append('Volume_ROC_14')
 
-# --- THE FINAL 13 CAPSTONE UI FILTERS ---
+# --- BATCH 3: THE FINAL 13 CAPSTONE UI FILTERS ---
 if "Bollinger Bandwidth" in active_filters:
     display_cols.append('Bollinger_Bandwidth')
 
