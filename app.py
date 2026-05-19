@@ -200,12 +200,12 @@ delta = df.groupby('Ticker')['Close'].diff()
 tp = (df['High'] + df['Low'] + df['Close']) / 3
 
 # ---------------------------------------------------------
-# LIVE CALCULATIONS (Only runs if the user selects the tool)
+# LIVE CALCULATIONS (Using highly strictly scoped variables)
 # ---------------------------------------------------------
 
 if "ADX (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("ADX Period", 5, 100, 14)
-    col = f'ADX_{p}'
+    p_adx = st.sidebar.number_input("ADX Period", 5, 100, 14)
+    col_adx = f'ADX_{p_adx}'
     df['up_move'] = df.groupby('Ticker')['High'].diff()
     df['down_move'] = df.groupby('Ticker')['Low'].shift(1) - df['Low']
     df['plus_dm'] = np.where((df['up_move'] > df['down_move']) & (df['up_move'] > 0), df['up_move'], 0.0)
@@ -214,321 +214,321 @@ if "ADX (Dynamic)" in active_filters:
     tr2 = np.abs(df['High'] - df.groupby('Ticker')['Close'].shift(1))
     tr3 = np.abs(df['Low'] - df.groupby('Ticker')['Close'].shift(1))
     df['tr'] = np.maximum(tr1, np.maximum(tr2, tr3))
-    df['tr_s'] = df.groupby('Ticker')['tr'].transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-    df['plus_dm_s'] = df.groupby('Ticker')['plus_dm'].transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-    df['minus_dm_s'] = df.groupby('Ticker')['minus_dm'].transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
+    df['tr_s'] = df.groupby('Ticker')['tr'].transform(lambda x: x.ewm(alpha=1/p_adx, adjust=False).mean())
+    df['plus_dm_s'] = df.groupby('Ticker')['plus_dm'].transform(lambda x: x.ewm(alpha=1/p_adx, adjust=False).mean())
+    df['minus_dm_s'] = df.groupby('Ticker')['minus_dm'].transform(lambda x: x.ewm(alpha=1/p_adx, adjust=False).mean())
     df['plus_di'] = 100 * (df['plus_dm_s'] / df['tr_s'].replace(0, 1e-9))
     df['minus_di'] = 100 * (df['minus_dm_s'] / df['tr_s'].replace(0, 1e-9))
     df['dx'] = (np.abs(df['plus_di'] - df['minus_di']) / (df['plus_di'] + df['minus_di']).replace(0, 1e-9)) * 100
-    df[col] = df.groupby('Ticker')['dx'].transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-    min_adx = st.sidebar.slider(f"Minimum ADX ({p})", 0.0, 100.0, 25.0)
-    display_cols.append(col)
+    df[col_adx] = df.groupby('Ticker')['dx'].transform(lambda x: x.ewm(alpha=1/p_adx, adjust=False).mean())
+    min_adx = st.sidebar.slider(f"Minimum ADX ({p_adx})", 0.0, 100.0, 25.0)
+    display_cols.append(col_adx)
 
 if "Aroon Oscillator (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Aroon Period", 5, 100, 14)
-    col = f'Aroon_{p}'
-    aroon_up = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p).apply(np.argmax, raw=True))
-    aroon_down = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p).apply(np.argmin, raw=True))
-    df[col] = ((aroon_up / p) * 100) - ((aroon_down / p) * 100)
-    aroon_status = st.sidebar.selectbox(f"Aroon ({p})", ["Positive (Bullish)", "Negative (Bearish)"])
-    display_cols.append(col)
+    p_aroon = st.sidebar.number_input("Aroon Period", 5, 100, 14)
+    col_aroon = f'Aroon_{p_aroon}'
+    aroon_up = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p_aroon).apply(np.argmax, raw=True))
+    aroon_down = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p_aroon).apply(np.argmin, raw=True))
+    df[col_aroon] = ((aroon_up / p_aroon) * 100) - ((aroon_down / p_aroon) * 100)
+    aroon_status = st.sidebar.selectbox(f"Aroon ({p_aroon})", ["Positive (Bullish)", "Negative (Bearish)"])
+    display_cols.append(col_aroon)
 
 if "Awesome Oscillator (Dynamic)" in active_filters:
-    p_short = st.sidebar.number_input("AO Short Period", 2, 50, 5)
-    p_long = st.sidebar.number_input("AO Long Period", 10, 200, 34)
-    col = f'AO_{p_short}_{p_long}'
+    p_ao_s = st.sidebar.number_input("AO Short Period", 2, 50, 5)
+    p_ao_l = st.sidebar.number_input("AO Long Period", 10, 200, 34)
+    col_ao = f'AO_{p_ao_s}_{p_ao_l}'
     hl2 = (df['High'] + df['Low']) / 2
-    sma_s = hl2.groupby(df['Ticker']).transform(lambda x: x.rolling(p_short).mean())
-    sma_l = hl2.groupby(df['Ticker']).transform(lambda x: x.rolling(p_long).mean())
-    df[col] = sma_s - sma_l
-    ao_status = st.sidebar.selectbox(f"Awesome Osc ({p_short},{p_long})", ["Above Zero", "Below Zero"])
-    display_cols.append(col)
+    sma_s = hl2.groupby(df['Ticker']).transform(lambda x: x.rolling(p_ao_s).mean())
+    sma_l = hl2.groupby(df['Ticker']).transform(lambda x: x.rolling(p_ao_l).mean())
+    df[col_ao] = sma_s - sma_l
+    ao_status = st.sidebar.selectbox(f"Awesome Osc ({p_ao_s},{p_ao_l})", ["Above Zero", "Below Zero"])
+    display_cols.append(col_ao)
 
 if "Bollinger Bands (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Bollinger Period", 5, 100, 20)
-    std = st.sidebar.number_input("Standard Deviations", 1.0, 4.0, 2.0, 0.1)
-    upper = f'BB_Up_{p}'
-    lower = f'BB_Low_{p}'
-    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).mean())
-    std_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).std())
-    df[upper] = sma_t + (std_t * std)
-    df[lower] = sma_t - (std_t * std)
-    bb_status = st.sidebar.selectbox(f"BBands ({p},{std})", ["Above Upper", "Below Lower", "Inside Bands"])
-    display_cols.extend([upper, lower])
+    p_bb = st.sidebar.number_input("Bollinger Period", 5, 100, 20)
+    std_bb = st.sidebar.number_input("Standard Deviations", 1.0, 4.0, 2.0, 0.1)
+    col_bb_up = f'BB_Up_{p_bb}'
+    col_bb_low = f'BB_Low_{p_bb}'
+    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_bb).mean())
+    std_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_bb).std())
+    df[col_bb_up] = sma_t + (std_t * std_bb)
+    df[col_bb_low] = sma_t - (std_t * std_bb)
+    bb_status = st.sidebar.selectbox(f"BBands ({p_bb},{std_bb})", ["Above Upper", "Below Lower", "Inside Bands"])
+    display_cols.extend([col_bb_up, col_bb_low])
 
 if "CCI (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("CCI Period", 5, 100, 20)
-    col = f'CCI_{p}'
-    sma_tp = tp.groupby(df['Ticker']).transform(lambda x: x.rolling(p).mean())
-    mad = tp.groupby(df['Ticker']).transform(lambda x: x.rolling(p).apply(lambda y: np.mean(np.abs(y - np.mean(y))), raw=True))
-    df[col] = (tp - sma_tp) / (0.015 * mad.replace(0, 1e-9))
-    min_cci, max_cci = st.sidebar.slider(f"CCI ({p}) Range", -300.0, 300.0, (-100.0, 100.0))
-    display_cols.append(col)
+    p_cci = st.sidebar.number_input("CCI Period", 5, 100, 20)
+    col_cci = f'CCI_{p_cci}'
+    sma_tp = tp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_cci).mean())
+    mad = tp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_cci).apply(lambda y: np.mean(np.abs(y - np.mean(y))), raw=True))
+    df[col_cci] = (tp - sma_tp) / (0.015 * mad.replace(0, 1e-9))
+    min_cci, max_cci = st.sidebar.slider(f"CCI ({p_cci}) Range", -300.0, 300.0, (-100.0, 100.0))
+    display_cols.append(col_cci)
 
 if "Chaikin Money Flow (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("CMF Period", 5, 100, 20)
-    col = f'CMF_{p}'
+    p_cmf = st.sidebar.number_input("CMF Period", 5, 100, 20)
+    col_cmf = f'CMF_{p_cmf}'
     mfv = df['Volume'] * ((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low']).replace(0, 1e-9)
-    df[col] = mfv.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum()) / df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(p).sum()).replace(0, 1e-9)
-    cmf_status = st.sidebar.selectbox(f"CMF ({p})", ["Positive (Buying)", "Negative (Selling)"])
-    display_cols.append(col)
+    df[col_cmf] = mfv.groupby(df['Ticker']).transform(lambda x: x.rolling(p_cmf).sum()) / df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(p_cmf).sum()).replace(0, 1e-9)
+    cmf_status = st.sidebar.selectbox(f"CMF ({p_cmf})", ["Positive (Buying)", "Negative (Selling)"])
+    display_cols.append(col_cmf)
 
 if "Chaikin Volatility (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("CV Period", 5, 100, 10)
-    col = f'CV_{p}'
+    p_cv = st.sidebar.number_input("CV Period", 5, 100, 10)
+    col_cv = f'CV_{p_cv}'
     hl_ema = (df['High'] - df['Low']).groupby(df['Ticker']).transform(lambda x: x.ewm(span=10, adjust=False).mean())
-    df[col] = ((hl_ema - hl_ema.groupby(df['Ticker']).shift(p)) / hl_ema.groupby(df['Ticker']).shift(p).replace(0, 1e-9)) * 100
-    min_cv = st.sidebar.slider(f"Min Chaikin Volatility ({p})", -50.0, 50.0, 0.0)
-    display_cols.append(col)
+    df[col_cv] = ((hl_ema - hl_ema.groupby(df['Ticker']).shift(p_cv)) / hl_ema.groupby(df['Ticker']).shift(p_cv).replace(0, 1e-9)) * 100
+    min_cv = st.sidebar.slider(f"Min Chaikin Volatility ({p_cv})", -50.0, 50.0, 0.0)
+    display_cols.append(col_cv)
 
 if "Chande Momentum (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("CMO Period", 5, 100, 14)
-    col = f'CMO_{p}'
+    p_cmo = st.sidebar.number_input("CMO Period", 5, 100, 14)
+    col_cmo = f'CMO_{p_cmo}'
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
-    sum_g = gain.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum())
-    sum_l = loss.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum())
-    df[col] = 100 * ((sum_g - sum_l) / (sum_g + sum_l).replace(0, 1e-9))
-    cmo_status = st.sidebar.selectbox(f"CMO ({p})", ["Overbought (> 50)", "Oversold (< -50)", "Neutral"])
-    display_cols.append(col)
+    sum_g = gain.groupby(df['Ticker']).transform(lambda x: x.rolling(p_cmo).sum())
+    sum_l = loss.groupby(df['Ticker']).transform(lambda x: x.rolling(p_cmo).sum())
+    df[col_cmo] = 100 * ((sum_g - sum_l) / (sum_g + sum_l).replace(0, 1e-9))
+    cmo_status = st.sidebar.selectbox(f"CMO ({p_cmo})", ["Overbought (> 50)", "Oversold (< -50)", "Neutral"])
+    display_cols.append(col_cmo)
 
 if "Detrended Price Oscillator (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("DPO Period", 5, 100, 20)
-    col = f'DPO_{p}'
-    shift_val = int((p/2) + 1)
-    shifted_mean = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).mean().shift(shift_val))
-    df[col] = df['Close'] - shifted_mean
-    dpo_status = st.sidebar.selectbox(f"DPO ({p})", ["Above Zero", "Below Zero"])
-    display_cols.append(col)
+    p_dpo = st.sidebar.number_input("DPO Period", 5, 100, 20)
+    col_dpo = f'DPO_{p_dpo}'
+    shift_val = int((p_dpo/2) + 1)
+    shifted_mean = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_dpo).mean().shift(shift_val))
+    df[col_dpo] = df['Close'] - shifted_mean
+    dpo_status = st.sidebar.selectbox(f"DPO ({p_dpo})", ["Above Zero", "Below Zero"])
+    display_cols.append(col_dpo)
 
 if "Disparity Index (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Disparity Period", 5, 100, 14)
-    col = f'Disp_{p}'
-    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).mean())
-    df[col] = ((df['Close'] - sma_t) / sma_t.replace(0, 1e-9)) * 100
-    display_cols.append(col)
+    p_disp = st.sidebar.number_input("Disparity Period", 5, 100, 14)
+    col_disp = f'Disp_{p_disp}'
+    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_disp).mean())
+    df[col_disp] = ((df['Close'] - sma_t) / sma_t.replace(0, 1e-9)) * 100
+    display_cols.append(col_disp)
 
 if "Ease of Movement (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("EOM Period", 5, 100, 14)
-    col = f'EOM_{p}'
+    p_eom = st.sidebar.number_input("EOM Period", 5, 100, 14)
+    col_eom = f'EOM_{p_eom}'
     dm = ((df['High'] + df['Low']) / 2) - ((df.groupby('Ticker')['High'].shift(1) + df.groupby('Ticker')['Low'].shift(1)) / 2)
     br = (df['Volume'] / 100000000) / (df['High'] - df['Low']).replace(0, 1e-9)
-    df[col] = (dm / br.replace(0, 1e-9)).groupby(df['Ticker']).transform(lambda x: x.rolling(p).mean())
-    eom_status = st.sidebar.selectbox(f"EOM ({p})", ["Positive", "Negative"])
-    display_cols.append(col)
+    df[col_eom] = (dm / br.replace(0, 1e-9)).groupby(df['Ticker']).transform(lambda x: x.rolling(p_eom).mean())
+    eom_status = st.sidebar.selectbox(f"EOM ({p_eom})", ["Positive", "Negative"])
+    display_cols.append(col_eom)
 
 if "Elder Ray Index (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Elder Ray EMA Period", 5, 100, 13)
-    bull = f'Elder_Bull_{p}'
-    bear = f'Elder_Bear_{p}'
-    ema_t = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p, adjust=False).mean())
-    df[bull] = df['High'] - ema_t
-    df[bear] = df['Low'] - ema_t
-    display_cols.extend([bull, bear])
+    p_elder = st.sidebar.number_input("Elder Ray EMA Period", 5, 100, 13)
+    col_elder_bull = f'Elder_Bull_{p_elder}'
+    col_elder_bear = f'Elder_Bear_{p_elder}'
+    ema_t = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_elder, adjust=False).mean())
+    df[col_elder_bull] = df['High'] - ema_t
+    df[col_elder_bear] = df['Low'] - ema_t
+    display_cols.extend([col_elder_bull, col_elder_bear])
 
 if "EMA (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("EMA Period", 2, 500, 21)
-    col = f'EMA_{p}'
-    df[col] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p, adjust=False).mean())
-    ema_status = st.sidebar.selectbox(f"Price vs EMA ({p})", ["Above EMA", "Below EMA"])
-    display_cols.append(col)
+    p_ema = st.sidebar.number_input("EMA Period", 2, 500, 21)
+    col_ema = f'EMA_{p_ema}'
+    df[col_ema] = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_ema, adjust=False).mean())
+    ema_status = st.sidebar.selectbox(f"Price vs EMA ({p_ema})", ["Above EMA", "Below EMA"])
+    display_cols.append(col_ema)
 
 if "High Low Bands (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("HL Bands Period", 5, 100, 14)
-    hb = f'HighBand_{p}'
-    lb = f'LowBand_{p}'
-    df[hb] = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p).mean())
-    df[lb] = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p).mean())
-    display_cols.extend([hb, lb])
+    p_hl = st.sidebar.number_input("HL Bands Period", 5, 100, 14)
+    col_hl_up = f'HighBand_{p_hl}'
+    col_hl_low = f'LowBand_{p_hl}'
+    df[col_hl_up] = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p_hl).mean())
+    df[col_hl_low] = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p_hl).mean())
+    display_cols.extend([col_hl_up, col_hl_low])
 
 if "Highest High Value (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("HHV Period", 5, 100, 14)
-    col = f'HHV_{p}'
-    df[col] = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p).max())
-    display_cols.append(col)
+    p_hhv = st.sidebar.number_input("HHV Period", 5, 100, 14)
+    col_hhv = f'HHV_{p_hhv}'
+    df[col_hhv] = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p_hhv).max())
+    display_cols.append(col_hhv)
 
 if "Keltner Channels (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Keltner Period", 5, 100, 20)
-    mult = st.sidebar.number_input("ATR Multiplier", 1.0, 4.0, 1.5, 0.1)
-    ku = f'KC_Up_{p}'
-    kl = f'KC_Low_{p}'
-    ema_t = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p, adjust=False).mean())
+    p_kc = st.sidebar.number_input("Keltner Period", 5, 100, 20)
+    mult_kc = st.sidebar.number_input("ATR Multiplier", 1.0, 4.0, 1.5, 0.1)
+    col_kc_up = f'KC_Up_{p_kc}'
+    col_kc_low = f'KC_Low_{p_kc}'
+    ema_t = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_kc, adjust=False).mean())
     tr_t = np.maximum(df['High'] - df['Low'], np.maximum(np.abs(df['High'] - df.groupby('Ticker')['Close'].shift(1)), np.abs(df['Low'] - df.groupby('Ticker')['Close'].shift(1))))
-    atr_t = tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p).mean())
-    df[ku] = ema_t + (mult * atr_t)
-    df[kl] = ema_t - (mult * atr_t)
-    kc_status = st.sidebar.selectbox(f"Keltner ({p})", ["Above Upper", "Below Lower"])
-    display_cols.extend([ku, kl])
+    atr_t = tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p_kc).mean())
+    df[col_kc_up] = ema_t + (mult_kc * atr_t)
+    df[col_kc_low] = ema_t - (mult_kc * atr_t)
+    kc_status = st.sidebar.selectbox(f"Keltner ({p_kc})", ["Above Upper", "Below Lower"])
+    display_cols.extend([col_kc_up, col_kc_low])
 
 if "Lowest Low Value (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("LLV Period", 5, 100, 14)
-    col = f'LLV_{p}'
-    df[col] = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p).min())
-    display_cols.append(col)
+    p_llv = st.sidebar.number_input("LLV Period", 5, 100, 14)
+    col_llv = f'LLV_{p_llv}'
+    df[col_llv] = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p_llv).min())
+    display_cols.append(col_llv)
 
 if "MACD (Dynamic)" in active_filters:
-    fast = st.sidebar.number_input("MACD Fast", 2, 50, 12)
-    slow = st.sidebar.number_input("MACD Slow", 5, 100, 26)
-    sig = st.sidebar.number_input("MACD Signal", 2, 50, 9)
-    col_m = f'MACD_{fast}_{slow}'
-    col_s = f'MACDSig_{sig}'
-    fast_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=fast, adjust=False).mean())
-    slow_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=slow, adjust=False).mean())
-    df[col_m] = fast_e - slow_e
-    df[col_s] = df.groupby('Ticker')[col_m].transform(lambda x: x.ewm(span=sig, adjust=False).mean())
-    macd_status = st.sidebar.selectbox(f"MACD ({fast},{slow},{sig})", ["Bullish (> Signal)", "Bearish (< Signal)"])
-    display_cols.extend([col_m, col_s])
+    p_macd_f = st.sidebar.number_input("MACD Fast", 2, 50, 12)
+    p_macd_s = st.sidebar.number_input("MACD Slow", 5, 100, 26)
+    p_macd_sig = st.sidebar.number_input("MACD Signal", 2, 50, 9)
+    col_macd_m = f'MACD_{p_macd_f}_{p_macd_s}'
+    col_macd_sig = f'MACDSig_{p_macd_sig}'
+    fast_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_macd_f, adjust=False).mean())
+    slow_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_macd_s, adjust=False).mean())
+    df[col_macd_m] = fast_e - slow_e
+    df[col_macd_sig] = df.groupby('Ticker')[col_macd_m].transform(lambda x: x.ewm(span=p_macd_sig, adjust=False).mean())
+    macd_status = st.sidebar.selectbox(f"MACD ({p_macd_f},{p_macd_s},{p_macd_sig})", ["Bullish (> Signal)", "Bearish (< Signal)"])
+    display_cols.extend([col_macd_m, col_macd_sig])
 
 if "MFI (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("MFI Period", 5, 100, 14)
-    col = f'MFI_{p}'
+    p_mfi = st.sidebar.number_input("MFI Period", 5, 100, 14)
+    col_mfi = f'MFI_{p_mfi}'
     rmf = tp * df['Volume']
     pos_flow = rmf.where(tp.groupby(df['Ticker']).diff() > 0, 0.0)
     neg_flow = rmf.where(tp.groupby(df['Ticker']).diff() < 0, 0.0)
-    pos_sum = pos_flow.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum())
-    neg_sum = neg_flow.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum())
-    df[col] = 100 - (100 / (1 + (pos_sum / neg_sum.replace(0, 1e-9))))
-    min_mfi, max_mfi = st.sidebar.slider(f"MFI ({p}) Range", 0.0, 100.0, (20.0, 80.0))
-    display_cols.append(col)
+    pos_sum = pos_flow.groupby(df['Ticker']).transform(lambda x: x.rolling(p_mfi).sum())
+    neg_sum = neg_flow.groupby(df['Ticker']).transform(lambda x: x.rolling(p_mfi).sum())
+    df[col_mfi] = 100 - (100 / (1 + (pos_sum / neg_sum.replace(0, 1e-9))))
+    min_mfi, max_mfi = st.sidebar.slider(f"MFI ({p_mfi}) Range", 0.0, 100.0, (20.0, 80.0))
+    display_cols.append(col_mfi)
 
 if "Momentum (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Momentum Period", 5, 100, 10)
-    col = f'Mom_{p}'
-    df[col] = df['Close'] - df.groupby('Ticker')['Close'].shift(p)
-    mom_status = st.sidebar.selectbox(f"Momentum ({p})", ["Positive", "Negative"])
-    display_cols.append(col)
+    p_mom = st.sidebar.number_input("Momentum Period", 5, 100, 10)
+    col_mom = f'Mom_{p_mom}'
+    df[col_mom] = df['Close'] - df.groupby('Ticker')['Close'].shift(p_mom)
+    mom_status = st.sidebar.selectbox(f"Momentum ({p_mom})", ["Positive", "Negative"])
+    display_cols.append(col_mom)
 
 if "Moving Average Envelope (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("MAE Period", 5, 100, 20)
-    pct = st.sidebar.number_input("MAE Envelope %", 1.0, 20.0, 5.0, 0.5) / 100
-    eu = f'MAE_Up_{p}'
-    el = f'MAE_Low_{p}'
-    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).mean())
-    df[eu] = sma_t * (1 + pct)
-    df[el] = sma_t * (1 - pct)
-    mae_status = st.sidebar.selectbox(f"MAE ({p})", ["Above Upper", "Below Lower", "Inside"])
-    display_cols.extend([eu, el])
+    p_mae = st.sidebar.number_input("MAE Period", 5, 100, 20)
+    pct_mae = st.sidebar.number_input("MAE Envelope %", 1.0, 20.0, 5.0, 0.5) / 100
+    col_mae_up = f'MAE_Up_{p_mae}'
+    col_mae_low = f'MAE_Low_{p_mae}'
+    sma_t = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_mae).mean())
+    df[col_mae_up] = sma_t * (1 + pct_mae)
+    df[col_mae_low] = sma_t * (1 - pct_mae)
+    mae_status = st.sidebar.selectbox(f"MAE ({p_mae})", ["Above Upper", "Below Lower", "Inside"])
+    display_cols.extend([col_mae_up, col_mae_low])
 
 if "PPO (Dynamic)" in active_filters:
-    fast = st.sidebar.number_input("PPO Fast", 2, 50, 12)
-    slow = st.sidebar.number_input("PPO Slow", 5, 100, 26)
-    col = f'PPO_{fast}_{slow}'
-    fast_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=fast, adjust=False).mean())
-    slow_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=slow, adjust=False).mean())
-    df[col] = ((fast_e - slow_e) / slow_e.replace(0, 1e-9)) * 100
-    ppo_status = st.sidebar.selectbox(f"PPO ({fast},{slow})", ["Positive Momentum", "Negative Momentum"])
-    display_cols.append(col)
+    p_ppo_f = st.sidebar.number_input("PPO Fast", 2, 50, 12)
+    p_ppo_s = st.sidebar.number_input("PPO Slow", 5, 100, 26)
+    col_ppo = f'PPO_{p_ppo_f}_{p_ppo_s}'
+    fast_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_ppo_f, adjust=False).mean())
+    slow_e = df.groupby('Ticker')['Close'].transform(lambda x: x.ewm(span=p_ppo_s, adjust=False).mean())
+    df[col_ppo] = ((fast_e - slow_e) / slow_e.replace(0, 1e-9)) * 100
+    ppo_status = st.sidebar.selectbox(f"PPO ({p_ppo_f},{p_ppo_s})", ["Positive Momentum", "Negative Momentum"])
+    display_cols.append(col_ppo)
 
 if "RSI (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("RSI Period", 2, 100, 14)
-    col = f'RSI_{p}'
+    p_rsi = st.sidebar.number_input("RSI Period", 2, 100, 14)
+    col_rsi = f'RSI_{p_rsi}'
     gain = delta.where(delta > 0, 0.0)
     loss = -delta.where(delta < 0, 0.0)
-    avg_gain = gain.groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-    avg_loss = loss.groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
+    avg_gain = gain.groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p_rsi, adjust=False).mean())
+    avg_loss = loss.groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p_rsi, adjust=False).mean())
     rs = avg_gain / avg_loss.replace(0, 1e-9)
-    df[col] = 100 - (100 / (1 + rs))
-    min_rsi, max_rsi = st.sidebar.slider(f"RSI ({p}) Range", 0.0, 100.0, (30.0, 70.0))
-    display_cols.append(col)
+    df[col_rsi] = 100 - (100 / (1 + rs))
+    min_rsi, max_rsi = st.sidebar.slider(f"RSI ({p_rsi}) Range", 0.0, 100.0, (30.0, 70.0))
+    display_cols.append(col_rsi)
 
 if "SMA (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("SMA Period", 2, 500, 20)
-    col = f'SMA_{p}'
-    df[col] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).mean())
-    sma_status = st.sidebar.selectbox(f"Price vs SMA ({p})", ["Above SMA", "Below SMA"])
-    display_cols.append(col)
+    p_sma = st.sidebar.number_input("SMA Period", 2, 500, 20)
+    col_sma = f'SMA_{p_sma}'
+    df[col_sma] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_sma).mean())
+    sma_status = st.sidebar.selectbox(f"Price vs SMA ({p_sma})", ["Above SMA", "Below SMA"])
+    display_cols.append(col_sma)
 
 if "Standard Deviation (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Std Dev Period", 5, 100, 20)
-    col = f'StdDev_{p}'
-    df[col] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).std())
-    display_cols.append(col)
+    p_std = st.sidebar.number_input("Std Dev Period", 5, 100, 20)
+    col_std = f'StdDev_{p_std}'
+    df[col_std] = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_std).std())
+    display_cols.append(col_std)
 
 if "Stochastic %K (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Stoch %K Period", 5, 100, 14)
-    col = f'StochK_{p}'
-    ll = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p).min())
-    hh = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p).max())
-    df[col] = ((df['Close'] - ll) / (hh - ll).replace(0, 1e-9)) * 100
-    min_stoch, max_stoch = st.sidebar.slider(f"Stoch %K ({p}) Range", 0.0, 100.0, (20.0, 80.0))
-    display_cols.append(col)
+    p_sk = st.sidebar.number_input("Stoch %K Period", 5, 100, 14)
+    col_sk = f'StochK_{p_sk}'
+    ll = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p_sk).min())
+    hh = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p_sk).max())
+    df[col_sk] = ((df['Close'] - ll) / (hh - ll).replace(0, 1e-9)) * 100
+    min_sk, max_sk = st.sidebar.slider(f"Stoch %K ({p_sk}) Range", 0.0, 100.0, (20.0, 80.0))
+    display_cols.append(col_sk)
 
 if "Stochastic RSI (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Stoch RSI Period", 5, 100, 14)
-    col = f'StochRSI_{p}'
-    if f'RSI_{p}' not in df.columns:
-        g = delta.where(delta > 0, 0.0).groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-        l = (-delta.where(delta < 0, 0.0)).groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p, adjust=False).mean())
-        rsi = 100 - (100 / (1 + (g / l.replace(0, 1e-9))))
+    p_srsi = st.sidebar.number_input("Stoch RSI Period", 5, 100, 14)
+    col_srsi = f'StochRSI_{p_srsi}'
+    if f'RSI_{p_srsi}' not in df.columns:
+        g = delta.where(delta > 0, 0.0).groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p_srsi, adjust=False).mean())
+        l = (-delta.where(delta < 0, 0.0)).groupby(df['Ticker']).transform(lambda x: x.ewm(alpha=1/p_srsi, adjust=False).mean())
+        rsi_temp = 100 - (100 / (1 + (g / l.replace(0, 1e-9))))
     else:
-        rsi = df[f'RSI_{p}']
-    rsi_ll = rsi.groupby(df['Ticker']).transform(lambda x: x.rolling(p).min())
-    rsi_hh = rsi.groupby(df['Ticker']).transform(lambda x: x.rolling(p).max())
-    df[col] = ((rsi - rsi_ll) / (rsi_hh - rsi_ll).replace(0, 1e-9)) * 100
-    min_srsi, max_srsi = st.sidebar.slider(f"Stoch RSI ({p})", 0.0, 100.0, (20.0, 80.0))
-    display_cols.append(col)
+        rsi_temp = df[f'RSI_{p_srsi}']
+    rsi_ll = rsi_temp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_srsi).min())
+    rsi_hh = rsi_temp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_srsi).max())
+    df[col_srsi] = ((rsi_temp - rsi_ll) / (rsi_hh - rsi_ll).replace(0, 1e-9)) * 100
+    min_srsi, max_srsi = st.sidebar.slider(f"Stoch RSI ({p_srsi})", 0.0, 100.0, (20.0, 80.0))
+    display_cols.append(col_srsi)
 
 if "Ulcer Index (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Ulcer Period", 5, 100, 14)
-    col = f'Ulcer_{p}'
-    max_c = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p).max())
+    p_ulcer = st.sidebar.number_input("Ulcer Period", 5, 100, 14)
+    col_ulcer = f'Ulcer_{p_ulcer}'
+    max_c = df.groupby('Ticker')['Close'].transform(lambda x: x.rolling(p_ulcer).max())
     pd_down = ((df['Close'] - max_c) / max_c.replace(0, 1e-9)) * 100
-    df[col] = np.sqrt((pd_down ** 2).groupby(df['Ticker']).transform(lambda x: x.rolling(p).mean()))
-    max_ulcer = st.sidebar.slider(f"Max Ulcer Index ({p})", 0.0, 50.0, 10.0)
-    display_cols.append(col)
+    df[col_ulcer] = np.sqrt((pd_down ** 2).groupby(df['Ticker']).transform(lambda x: x.rolling(p_ulcer).mean()))
+    max_ulcer = st.sidebar.slider(f"Max Ulcer Index ({p_ulcer})", 0.0, 50.0, 10.0)
+    display_cols.append(col_ulcer)
 
 if "Ultimate Oscillator (Dynamic)" in active_filters:
-    p1 = st.sidebar.number_input("UO Short", 2, 20, 7)
-    p2 = st.sidebar.number_input("UO Med", 5, 50, 14)
-    p3 = st.sidebar.number_input("UO Long", 10, 100, 28)
-    col = f'UO_{p1}_{p2}_{p3}'
+    p_uo1 = st.sidebar.number_input("UO Short", 2, 20, 7)
+    p_uo2 = st.sidebar.number_input("UO Med", 5, 50, 14)
+    p_uo3 = st.sidebar.number_input("UO Long", 10, 100, 28)
+    col_uo = f'UO_{p_uo1}_{p_uo2}_{p_uo3}'
     tr_t = np.maximum(df['High'] - df['Low'], np.maximum(np.abs(df['High'] - df.groupby('Ticker')['Close'].shift(1)), np.abs(df['Low'] - df.groupby('Ticker')['Close'].shift(1))))
     bp = df['Close'] - np.minimum(df['Low'], df.groupby('Ticker')['Close'].shift(1))
-    a1 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p1).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p1).sum()).replace(0, 1e-9)
-    a2 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p2).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p2).sum()).replace(0, 1e-9)
-    a3 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p3).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p3).sum()).replace(0, 1e-9)
-    df[col] = 100 * ((4 * a1) + (2 * a2) + a3) / 7
-    min_uo, max_uo = st.sidebar.slider(f"Ultimate Osc ({p1},{p2},{p3})", 0.0, 100.0, (30.0, 70.0))
-    display_cols.append(col)
+    a1 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo1).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo1).sum()).replace(0, 1e-9)
+    a2 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo2).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo2).sum()).replace(0, 1e-9)
+    a3 = bp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo3).sum()) / tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p_uo3).sum()).replace(0, 1e-9)
+    df[col_uo] = 100 * ((4 * a1) + (2 * a2) + a3) / 7
+    min_uo, max_uo = st.sidebar.slider(f"Ultimate Osc ({p_uo1},{p_uo2},{p_uo3})", 0.0, 100.0, (30.0, 70.0))
+    display_cols.append(col_uo)
 
 if "Volume Oscillator (Dynamic)" in active_filters:
-    s = st.sidebar.number_input("Vol Osc Short", 2, 50, 14)
-    l = st.sidebar.number_input("Vol Osc Long", 5, 100, 28)
-    col = f'VolOsc_{s}_{l}'
-    vs = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(s).mean())
-    vl = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(l).mean())
-    df[col] = ((vs - vl) / vl.replace(0, 1e-9)) * 100
-    vo_status = st.sidebar.selectbox(f"Vol Osc ({s},{l})", ["Expanding (> 0)", "Contracting (< 0)"])
-    display_cols.append(col)
+    p_vo_s = st.sidebar.number_input("Vol Osc Short", 2, 50, 14)
+    p_vo_l = st.sidebar.number_input("Vol Osc Long", 5, 100, 28)
+    col_vo = f'VolOsc_{p_vo_s}_{p_vo_l}'
+    vs = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(p_vo_s).mean())
+    vl = df.groupby('Ticker')['Volume'].transform(lambda x: x.rolling(p_vo_l).mean())
+    df[col_vo] = ((vs - vl) / vl.replace(0, 1e-9)) * 100
+    vo_status = st.sidebar.selectbox(f"Vol Osc ({p_vo_s},{p_vo_l})", ["Expanding (> 0)", "Contracting (< 0)"])
+    display_cols.append(col_vo)
 
 if "Volume ROC (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("VROC Period", 2, 100, 14)
-    col = f'VROC_{p}'
-    df[col] = df.groupby('Ticker')['Volume'].transform(lambda x: x.pct_change(periods=p)) * 100
-    min_vroc = st.sidebar.slider(f"Min VROC ({p}) %", -100.0, 500.0, 50.0)
-    display_cols.append(col)
+    p_vroc = st.sidebar.number_input("VROC Period", 2, 100, 14)
+    col_vroc = f'VROC_{p_vroc}'
+    df[col_vroc] = df.groupby('Ticker')['Volume'].transform(lambda x: x.pct_change(periods=p_vroc)) * 100
+    min_vroc = st.sidebar.slider(f"Min VROC ({p_vroc}) %", -100.0, 500.0, 50.0)
+    display_cols.append(col_vroc)
 
 if "Vortex Index (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Vortex Period", 5, 100, 14)
-    vp = f'Vortex_P_{p}'
-    vn = f'Vortex_N_{p}'
+    p_vx = st.sidebar.number_input("Vortex Period", 5, 100, 14)
+    col_vx_p = f'Vortex_P_{p_vx}'
+    col_vx_n = f'Vortex_N_{p_vx}'
     vmp = np.abs(df['High'] - df.groupby('Ticker')['Low'].shift(1))
     vmm = np.abs(df['Low'] - df.groupby('Ticker')['High'].shift(1))
     tr_t = np.maximum(df['High'] - df['Low'], np.maximum(np.abs(df['High'] - df.groupby('Ticker')['Close'].shift(1)), np.abs(df['Low'] - df.groupby('Ticker')['Close'].shift(1))))
-    tr_sum = tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum())
-    df[vp] = vmp.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum()) / tr_sum.replace(0, 1e-9)
-    df[vn] = vmm.groupby(df['Ticker']).transform(lambda x: x.rolling(p).sum()) / tr_sum.replace(0, 1e-9)
-    vi_status = st.sidebar.selectbox(f"Vortex ({p})", ["Bullish (VI+ > VI-)", "Bearish (VI- > VI+)"])
-    display_cols.extend([vp, vn])
+    tr_sum = tr_t.groupby(df['Ticker']).transform(lambda x: x.rolling(p_vx).sum())
+    df[col_vx_p] = vmp.groupby(df['Ticker']).transform(lambda x: x.rolling(p_vx).sum()) / tr_sum.replace(0, 1e-9)
+    df[col_vx_n] = vmm.groupby(df['Ticker']).transform(lambda x: x.rolling(p_vx).sum()) / tr_sum.replace(0, 1e-9)
+    vi_status = st.sidebar.selectbox(f"Vortex ({p_vx})", ["Bullish (VI+ > VI-)", "Bearish (VI- > VI+)"])
+    display_cols.extend([col_vx_p, col_vx_n])
 
 if "Williams %R (Dynamic)" in active_filters:
-    p = st.sidebar.number_input("Williams Period", 5, 100, 14)
-    col = f'WillR_{p}'
-    hh = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p).max())
-    ll = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p).min())
-    df[col] = ((hh - df['Close']) / (hh - ll).replace(0, 1e-9)) * -100
-    min_will, max_will = st.sidebar.slider(f"Will %R ({p})", -100.0, 0.0, (-80.0, -20.0))
-    display_cols.append(col)
+    p_will = st.sidebar.number_input("Williams Period", 5, 100, 14)
+    col_will = f'WillR_{p_will}'
+    hh = df.groupby('Ticker')['High'].transform(lambda x: x.rolling(p_will).max())
+    ll = df.groupby('Ticker')['Low'].transform(lambda x: x.rolling(p_will).min())
+    df[col_will] = ((hh - df['Close']) / (hh - ll).replace(0, 1e-9)) * -100
+    min_will, max_will = st.sidebar.slider(f"Will %R ({p_will})", -100.0, 0.0, (-80.0, -20.0))
+    display_cols.append(col_will)
 
 
 # ---------------------------------------------------------
@@ -536,45 +536,45 @@ if "Williams %R (Dynamic)" in active_filters:
 # ---------------------------------------------------------
 filtered_data = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
 
-# Filter checks
-if "ADX (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'ADX_{adx_period}'] >= min_adx]
-if "Aroon Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Aroon_{p}'] > 0] if aroon_status == "Positive (Bullish)" else filtered_data[filtered_data[f'Aroon_{p}'] < 0]
-if "Awesome Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'AO_{p_short}_{p_long}'] > 0] if ao_status == "Above Zero" else filtered_data[filtered_data[f'AO_{p_short}_{p_long}'] < 0]
+# Apply Dynamic Filters
+if "ADX (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'ADX_{p_adx}'] >= min_adx]
+if "Aroon Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Aroon_{p_aroon}'] > 0] if aroon_status == "Positive (Bullish)" else filtered_data[filtered_data[f'Aroon_{p_aroon}'] < 0]
+if "Awesome Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'AO_{p_ao_s}_{p_ao_l}'] > 0] if ao_status == "Above Zero" else filtered_data[filtered_data[f'AO_{p_ao_s}_{p_ao_l}'] < 0]
 if "Bollinger Bands (Dynamic)" in active_filters:
-    if bb_status == "Above Upper": filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'BB_Up_{p}']]
-    elif bb_status == "Below Lower": filtered_data = filtered_data[filtered_data['Close'] < filtered_data[f'BB_Low_{p}']]
-    else: filtered_data = filtered_data[(filtered_data['Close'] <= filtered_data[f'BB_Up_{p}']) & (filtered_data['Close'] >= filtered_data[f'BB_Low_{p}'])]
-if "CCI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'CCI_{p}'] >= min_cci) & (filtered_data[f'CCI_{p}'] <= max_cci)]
-if "Chaikin Money Flow (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'CMF_{p}'] > 0] if cmf_status == "Positive (Buying)" else filtered_data[filtered_data[f'CMF_{p}'] < 0]
-if "Chaikin Volatility (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'CV_{p}'] >= min_cv]
+    if bb_status == "Above Upper": filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'BB_Up_{p_bb}']]
+    elif bb_status == "Below Lower": filtered_data = filtered_data[filtered_data['Close'] < filtered_data[f'BB_Low_{p_bb}']]
+    else: filtered_data = filtered_data[(filtered_data['Close'] <= filtered_data[f'BB_Up_{p_bb}']) & (filtered_data['Close'] >= filtered_data[f'BB_Low_{p_bb}'])]
+if "CCI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'CCI_{p_cci}'] >= min_cci) & (filtered_data[f'CCI_{p_cci}'] <= max_cci)]
+if "Chaikin Money Flow (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'CMF_{p_cmf}'] > 0] if cmf_status == "Positive (Buying)" else filtered_data[filtered_data[f'CMF_{p_cmf}'] < 0]
+if "Chaikin Volatility (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'CV_{p_cv}'] >= min_cv]
 if "Chande Momentum (Dynamic)" in active_filters:
-    if cmo_status == "Overbought (> 50)": filtered_data = filtered_data[filtered_data[f'CMO_{p}'] > 50]
-    elif cmo_status == "Oversold (< -50)": filtered_data = filtered_data[filtered_data[f'CMO_{p}'] < -50]
-    else: filtered_data = filtered_data[(filtered_data[f'CMO_{p}'] <= 50) & (filtered_data[f'CMO_{p}'] >= -50)]
-if "Detrended Price Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'DPO_{p}'] > 0] if dpo_status == "Above Zero" else filtered_data[filtered_data[f'DPO_{p}'] < 0]
-if "Ease of Movement (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'EOM_{p}'] > 0] if eom_status == "Positive" else filtered_data[filtered_data[f'EOM_{p}'] < 0]
-if "EMA (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'EMA_{p}']] if ema_status == "Above EMA" else filtered_data[filtered_data['Close'] < filtered_data[f'EMA_{p}']]
-if "Keltner Channels (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'KC_Up_{p}']] if kc_status == "Above Upper" else filtered_data[filtered_data['Close'] < filtered_data[f'KC_Low_{p}']]
-if "MACD (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'MACD_{fast}_{slow}'] > filtered_data[f'MACDSig_{sig}']] if macd_status == "Bullish (> Signal)" else filtered_data[filtered_data[f'MACD_{fast}_{slow}'] < filtered_data[f'MACDSig_{sig}']]
-if "MFI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'MFI_{p}'] >= min_mfi) & (filtered_data[f'MFI_{p}'] <= max_mfi)]
-if "Momentum (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Mom_{p}'] > 0] if mom_status == "Positive" else filtered_data[filtered_data[f'Mom_{p}'] < 0]
+    if cmo_status == "Overbought (> 50)": filtered_data = filtered_data[filtered_data[f'CMO_{p_cmo}'] > 50]
+    elif cmo_status == "Oversold (< -50)": filtered_data = filtered_data[filtered_data[f'CMO_{p_cmo}'] < -50]
+    else: filtered_data = filtered_data[(filtered_data[f'CMO_{p_cmo}'] <= 50) & (filtered_data[f'CMO_{p_cmo}'] >= -50)]
+if "Detrended Price Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'DPO_{p_dpo}'] > 0] if dpo_status == "Above Zero" else filtered_data[filtered_data[f'DPO_{p_dpo}'] < 0]
+if "Ease of Movement (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'EOM_{p_eom}'] > 0] if eom_status == "Positive" else filtered_data[filtered_data[f'EOM_{p_eom}'] < 0]
+if "EMA (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'EMA_{p_ema}']] if ema_status == "Above EMA" else filtered_data[filtered_data['Close'] < filtered_data[f'EMA_{p_ema}']]
+if "Keltner Channels (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'KC_Up_{p_kc}']] if kc_status == "Above Upper" else filtered_data[filtered_data['Close'] < filtered_data[f'KC_Low_{p_kc}']]
+if "MACD (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'MACD_{p_macd_f}_{p_macd_s}'] > filtered_data[f'MACDSig_{p_macd_sig}']] if macd_status == "Bullish (> Signal)" else filtered_data[filtered_data[f'MACD_{p_macd_f}_{p_macd_s}'] < filtered_data[f'MACDSig_{p_macd_sig}']]
+if "MFI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'MFI_{p_mfi}'] >= min_mfi) & (filtered_data[f'MFI_{p_mfi}'] <= max_mfi)]
+if "Momentum (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Mom_{p_mom}'] > 0] if mom_status == "Positive" else filtered_data[filtered_data[f'Mom_{p_mom}'] < 0]
 if "Moving Average Envelope (Dynamic)" in active_filters:
-    if mae_status == "Above Upper": filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'MAE_Up_{p}']]
-    elif mae_status == "Below Lower": filtered_data = filtered_data[filtered_data['Close'] < filtered_data[f'MAE_Low_{p}']]
-    else: filtered_data = filtered_data[(filtered_data['Close'] <= filtered_data[f'MAE_Up_{p}']) & (filtered_data['Close'] >= filtered_data[f'MAE_Low_{p}'])]
-if "PPO (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'PPO_{fast}_{slow}'] > 0] if ppo_status == "Positive Momentum" else filtered_data[filtered_data[f'PPO_{fast}_{slow}'] < 0]
-if "RSI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'RSI_{rsi_period}'] >= min_rsi) & (filtered_data[f'RSI_{rsi_period}'] <= max_rsi)]
-if "SMA (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'SMA_{p}']] if sma_status == "Above SMA" else filtered_data[filtered_data['Close'] < filtered_data[f'SMA_{p}']]
-if "Stochastic %K (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'StochK_{p}'] >= min_stoch) & (filtered_data[f'StochK_{p}'] <= max_stoch)]
-if "Stochastic RSI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'StochRSI_{p}'] >= min_srsi) & (filtered_data[f'StochRSI_{p}'] <= max_srsi)]
-if "Ulcer Index (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Ulcer_{p}'] <= max_ulcer]
-if "Ultimate Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'UO_{p1}_{p2}_{p3}'] >= min_uo) & (filtered_data[f'UO_{p1}_{p2}_{p3}'] <= max_uo)]
-if "Volume Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'VolOsc_{s}_{l}'] > 0] if vo_status == "Expanding (> 0)" else filtered_data[filtered_data[f'VolOsc_{s}_{l}'] < 0]
-if "Volume ROC (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'VROC_{p}'] >= min_vroc]
-if "Vortex Index (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Vortex_P_{p}'] > filtered_data[f'Vortex_N_{p}']] if vi_status == "Bullish (VI+ > VI-)" else filtered_data[filtered_data[f'Vortex_P_{p}'] < filtered_data[f'Vortex_N_{p}']]
-if "Williams %R (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'WillR_{p}'] >= min_will) & (filtered_data[f'WillR_{p}'] <= max_will)]
+    if mae_status == "Above Upper": filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'MAE_Up_{p_mae}']]
+    elif mae_status == "Below Lower": filtered_data = filtered_data[filtered_data['Close'] < filtered_data[f'MAE_Low_{p_mae}']]
+    else: filtered_data = filtered_data[(filtered_data['Close'] <= filtered_data[f'MAE_Up_{p_mae}']) & (filtered_data['Close'] >= filtered_data[f'MAE_Low_{p_mae}'])]
+if "PPO (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'PPO_{p_ppo_f}_{p_ppo_s}'] > 0] if ppo_status == "Positive Momentum" else filtered_data[filtered_data[f'PPO_{p_ppo_f}_{p_ppo_s}'] < 0]
+if "RSI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'RSI_{p_rsi}'] >= min_rsi) & (filtered_data[f'RSI_{p_rsi}'] <= max_rsi)]
+if "SMA (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data['Close'] > filtered_data[f'SMA_{p_sma}']] if sma_status == "Above SMA" else filtered_data[filtered_data['Close'] < filtered_data[f'SMA_{p_sma}']]
+if "Stochastic %K (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'StochK_{p_sk}'] >= min_sk) & (filtered_data[f'StochK_{p_sk}'] <= max_sk)]
+if "Stochastic RSI (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'StochRSI_{p_srsi}'] >= min_srsi) & (filtered_data[f'StochRSI_{p_srsi}'] <= max_srsi)]
+if "Ulcer Index (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Ulcer_{p_ulcer}'] <= max_ulcer]
+if "Ultimate Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'UO_{p_uo1}_{p_uo2}_{p_uo3}'] >= min_uo) & (filtered_data[f'UO_{p_uo1}_{p_uo2}_{p_uo3}'] <= max_uo)]
+if "Volume Oscillator (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'VolOsc_{p_vo_s}_{p_vo_l}'] > 0] if vo_status == "Expanding (> 0)" else filtered_data[filtered_data[f'VolOsc_{p_vo_s}_{p_vo_l}'] < 0]
+if "Volume ROC (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'VROC_{p_vroc}'] >= min_vroc]
+if "Vortex Index (Dynamic)" in active_filters: filtered_data = filtered_data[filtered_data[f'Vortex_P_{p_vx}'] > filtered_data[f'Vortex_N_{p_vx}']] if vi_status == "Bullish (VI+ > VI-)" else filtered_data[filtered_data[f'Vortex_P_{p_vx}'] < filtered_data[f'Vortex_N_{p_vx}']]
+if "Williams %R (Dynamic)" in active_filters: filtered_data = filtered_data[(filtered_data[f'WillR_{p_will}'] >= min_will) & (filtered_data[f'WillR_{p_will}'] <= max_will)]
 
-# Non-Dynamic (Static Math) Applications
+# Apply Static Filters
 if "Accumulation/Distribution" in active_filters: display_cols.append('Acc_Dist')
 if "Balance of Power" in active_filters:
     filtered_data = filtered_data[filtered_data['Balance_Of_Power'] > 0] if st.sidebar.selectbox("Balance of Power", ["Buyers (> 0)", "Sellers (< 0)"]) == "Buyers (> 0)" else filtered_data[filtered_data['Balance_Of_Power'] < 0]
